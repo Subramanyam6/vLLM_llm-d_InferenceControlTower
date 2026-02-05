@@ -230,7 +230,7 @@ function App() {
       })
       if (data.mode) {
         const nextMode =
-          data.mode === 'LLM-D (local)' ? 'LLMD' : data.mode === 'GRPC' ? 'GRPC' : 'SIM'
+          data.mode === 'llm-d (local)' ? 'LLMD' : data.mode === 'gRPC (local)' ? 'GRPC' : 'SIM'
         if (disableGrpc && nextMode === 'GRPC') {
           setMode('SIM')
         } else if (!enableLlmd && nextMode === 'LLMD') {
@@ -279,7 +279,7 @@ function App() {
   }
 
   const modeLabel =
-    mode === 'SIM' ? 'Light-weight Demo' : mode === 'LLMD' ? 'LLM-D (local)' : 'GRPC'
+    mode === 'SIM' ? 'Light-weight Demo' : mode === 'LLMD' ? 'llm-d (local)' : 'gRPC (local)'
   const scaleLabel =
     scaleStatus === 'error'
       ? `Scale failed${scaleError ? `: ${scaleError}` : ''}`

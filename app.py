@@ -225,7 +225,7 @@ def _build_state_payload(selected_id=0):
         "mode": (
             "Light-weight Demo"
             if _STATE["backend"] == "SIM"
-            else ("LLM-D (local)" if _STATE["backend"] == "LLMD" else "GRPC")
+            else ("llm-d (local)" if _STATE["backend"] == "LLMD" else "gRPC (local)")
         ),
         "scale": _STATE["scale"],
         "scale_status": _STATE["scale_status"],
@@ -295,7 +295,7 @@ def _handle_request(payload):
     selected_mode = (
         "Light-weight Demo"
         if backend_value == "SIM"
-        else ("LLM-D (local)" if backend_value == "LLMD" else "GRPC")
+        else ("llm-d (local)" if backend_value == "LLMD" else "gRPC (local)")
     )
     snapshot = gateway.snapshot()
     display_worker = 0

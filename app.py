@@ -314,6 +314,7 @@ def _handle_request(payload):
         "status": status,
         "mode": selected_mode,
         "latency_ms": int(result["latency_ms"]),
+        "cache_hit": result.get("cache_hit"),
         "workers": _STATE["scale"],
         "request_id": result["request_id"],
         "error": result["error"],

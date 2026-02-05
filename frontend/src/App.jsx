@@ -429,17 +429,19 @@ function App() {
             >
               gRPC
             </button>
-            {enableLlmd && (
-              <button
-                type="button"
-                className={mode === 'LLMD' ? 'active' : ''}
-                title="Use the local llm-d gateway (simulated vLLM)"
-                disabled={lockMode && mode !== 'LLMD'}
-                onClick={() => handleModeChange('LLMD')}
-              >
-                LLM-D (local)
-              </button>
-            )}
+            <button
+              type="button"
+              className={`${mode === 'LLMD' ? 'active' : ''}${enableLlmd ? '' : ' disabled'}`}
+              title={
+                enableLlmd
+                  ? 'Use the local llm-d gateway (simulated vLLM)'
+                  : 'LLM-D is available in local runs only.'
+              }
+              disabled={(lockMode && mode !== 'LLMD') || !enableLlmd}
+              onClick={() => handleModeChange('LLMD')}
+            >
+              LLM-D (local)
+            </button>
           </div>
         </div>
         <div className="scale">

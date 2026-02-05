@@ -389,8 +389,19 @@ function App() {
 
       <rect x="156" y="158" width="18" height="18" rx="6" fill="#0e1414" stroke="#2a2f2f" strokeWidth="3" />
       <circle cx="165" cy="167" r="4" fill="#8ff7b5" filter={`url(#${idPrefix}-glowG)`} />
+
+      <rect x="92" y="218" width="26" height="22" rx="8" fill="#1b2323" stroke="#2b3232" strokeWidth="4" />
+      <rect x="138" y="218" width="26" height="22" rx="8" fill="#1b2323" stroke="#2b3232" strokeWidth="4" />
+      <rect x="88" y="236" width="34" height="10" rx="5" fill="#0e1414" stroke="#2a2f2f" strokeWidth="3" />
+      <rect x="134" y="236" width="34" height="10" rx="5" fill="#0e1414" stroke="#2a2f2f" strokeWidth="3" />
     </svg>
   )
+
+  const todayLabel = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date())
 
   return (
     <div className="shell">
@@ -401,6 +412,10 @@ function App() {
             <h1>LLM Inference Control Tower</h1>
             <p className="subtitle">Mode: {modeLabel}</p>
           </div>
+        </div>
+        <div className="wip-note">
+          <span className="wip-pill">WIP</span>
+          <span>Actively evolving · {todayLabel}</span>
         </div>
         <div className="mode-switch">
           <span>Mode</span>

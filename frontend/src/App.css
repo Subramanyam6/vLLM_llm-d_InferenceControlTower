@@ -680,41 +680,18 @@
 }
 
 .bot {
-  width: 90px;
-  height: 120px;
-  background: linear-gradient(160deg, #6ef0d5 0%, #3b9c89 60%, #2b6559 100%);
-  border-radius: 18px;
-  padding: 12px;
-  position: relative;
-  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.25);
+  width: 120px;
+  height: 150px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  padding: 0;
 }
 
-.bot-face {
-  background: rgba(10, 12, 18, 0.9);
-  border-radius: 10px;
-  padding: 4px 6px;
-  display: flex;
-  justify-content: space-around;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.bot-face span {
-  width: 8px;
-  height: 8px;
-  background: #79f2d8;
-  border-radius: 50%;
-  box-shadow: 0 0 6px rgba(120, 244, 219, 0.6);
-}
-
-.bot-body {
-  position: absolute;
-  bottom: 12px;
-  left: 14px;
-  right: 14px;
-  height: 28px;
-  border-radius: 10px;
-  background: rgba(8, 10, 16, 0.65);
+.robot-svg {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 .worker-stats {
@@ -801,40 +778,11 @@
 }
 
 .mini-bot {
-  width: 46px;
-  height: 56px;
-  border-radius: 12px;
-  background: linear-gradient(160deg, #6ef0d5 0%, #3b9c89 60%, #2b6559 100%);
+  width: 64px;
+  height: 78px;
+  background: transparent;
   display: grid;
   place-items: center;
-  position: relative;
-  box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.2);
-}
-
-.mini-bot span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #79f2d8;
-  position: absolute;
-  top: 16px;
-}
-
-.mini-bot span:first-of-type {
-  left: 12px;
-}
-
-.mini-bot span:last-of-type {
-  right: 12px;
-}
-
-.mini-bot-mouth {
-  width: 22px;
-  height: 10px;
-  border-radius: 6px;
-  background: rgba(8, 10, 16, 0.65);
-  position: absolute;
-  bottom: 12px;
 }
 
 .worker-metrics {

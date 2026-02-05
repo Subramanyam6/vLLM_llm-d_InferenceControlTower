@@ -233,6 +233,105 @@ function App() {
   const hostedNote = disableGrpc
     ? 'Runs in the hosted UI — no local services required.'
     : 'No local services required — runs inside this UI.'
+  const renderRobotSvg = (idPrefix) => (
+    <svg
+      className="robot-svg"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 256 256"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id={`${idPrefix}-bodyG`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#2e3b3a" />
+          <stop offset="1" stopColor="#141a1a" />
+        </linearGradient>
+        <linearGradient id={`${idPrefix}-faceG`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#2b2f2f" />
+          <stop offset="1" stopColor="#151818" />
+        </linearGradient>
+        <filter id={`${idPrefix}-glowG`} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <circle cx="128" cy="30" r="8" fill="#8ff7b5" filter={`url(#${idPrefix}-glowG)`} />
+      <rect x="124" y="36" width="8" height="22" rx="4" fill="#3b4a49" />
+
+      <rect
+        x="66"
+        y="55"
+        width="124"
+        height="98"
+        rx="28"
+        fill={`url(#${idPrefix}-faceG)`}
+        stroke="#2b3232"
+        strokeWidth="6"
+      />
+      <rect
+        x="84"
+        y="76"
+        width="88"
+        height="56"
+        rx="18"
+        fill="#0e1414"
+        stroke="#2a2f2f"
+        strokeWidth="4"
+      />
+
+      <g filter={`url(#${idPrefix}-glowG)`}>
+        <rect x="104" y="95" width="18" height="16" rx="6" fill="#8ff7b5" />
+        <rect x="134" y="95" width="18" height="16" rx="6" fill="#8ff7b5" />
+      </g>
+      <rect x="114" y="118" width="28" height="6" rx="3" fill="#243030" />
+
+      <path
+        d="M66 102c-12 2-18 12-18 24v6c0 12 6 22 18 24"
+        fill="none"
+        stroke="#2b3232"
+        strokeWidth="10"
+        strokeLinecap="round"
+      />
+      <path
+        d="M190 102c12 2 18 12 18 24v6c0 12-6 22-18 24"
+        fill="none"
+        stroke="#2b3232"
+        strokeWidth="10"
+        strokeLinecap="round"
+      />
+      <rect x="42" y="110" width="18" height="36" rx="8" fill="#1b2323" stroke="#2b3232" strokeWidth="4" />
+      <rect x="196" y="110" width="18" height="36" rx="8" fill="#1b2323" stroke="#2b3232" strokeWidth="4" />
+
+      <rect
+        x="74"
+        y="150"
+        width="108"
+        height="76"
+        rx="26"
+        fill={`url(#${idPrefix}-bodyG)`}
+        stroke="#2b3232"
+        strokeWidth="6"
+      />
+      <rect
+        x="96"
+        y="168"
+        width="64"
+        height="18"
+        rx="9"
+        fill="#0e1414"
+        stroke="#2a2f2f"
+        strokeWidth="4"
+      />
+      <circle cx="106" cy="204" r="6" fill="#2a2f2f" />
+      <circle cx="150" cy="204" r="6" fill="#2a2f2f" />
+
+      <rect x="156" y="158" width="18" height="18" rx="6" fill="#0e1414" stroke="#2a2f2f" strokeWidth="3" />
+      <circle cx="165" cy="167" r="4" fill="#8ff7b5" filter={`url(#${idPrefix}-glowG)`} />
+    </svg>
+  )
 
   return (
     <div className="shell">
@@ -329,12 +428,20 @@ function App() {
             </li>
             <li>
               <strong>Tech:</strong> React (Vite) UI, Python gateway, gRPC
-              simulator, and K8s/Istio hooks.
+              simulator, Docker, and K8s/Istio hooks (optional OTEL).
             </li>
             <li>
               <strong>llm-d / vLLM mimic:</strong> Worker selection, retries,
               rate limits, and observability patterns without a full GPU
-              cluster. Uses dev images to avoid running heavy LLMs locally.
+              cluster. Runs inside the llm-d mesh (Kubernetes namespace
+              <code>llm-d-mesh</code>) with a gRPC inference-sim image:
+              <code>inference-control-tower-grpc:local</code> (built from
+              <code>Dockerfile.grpc-server</code>).
+            </li>
+            <li>
+              <strong>Tools (hosted/local):</strong> Hosted via Docker (HF
+              Spaces), local workflows use Docker, kubectl, Istio, and kind
+              for mesh demos.
             </li>
           </ul>
         </div>
@@ -506,11 +613,7 @@ function App() {
             <h3>Worker {selectedWorker}</h3>
             <div className="worker-body">
               <div className="bot">
-                <div className="bot-face">
-                  <span />
-                  <span />
-                </div>
-                <div className="bot-body" />
+                {renderRobotSvg('robot-main')}
               </div>
               <div className="worker-stats">
                 {selectedWorkerData ? (
@@ -546,42 +649,43 @@ function App() {
             {workers.length === 0 ? (
               <p className="placeholder">Send a request to see details.</p>
             ) : (
-              workers.map((worker) => (
-                <button
-                  type="button"
-                  key={worker.id}
-                  className={`worker-card ${selectedWorker === worker.label ? 'selected' : ''}`}
-                  onClick={() => setSelectedWorker(worker.label)}
-                  title="Click to focus this worker"
-                >
-                  <div className="worker-card-header">
-                    <h3>Worker {worker.label}</h3>
-                    <span className={`status ${worker.status.toLowerCase()}`}>
-                      {worker.status}
-                    </span>
-                  </div>
-                  <div className="worker-card-body">
-                    <div className="mini-bot">
-                      <span />
-                      <span />
-                      <div className="mini-bot-mouth" />
+              workers.map((worker) => {
+                const robotPrefix = `robot-${worker.id}`
+                return (
+                  <button
+                    type="button"
+                    key={worker.id}
+                    className={`worker-card ${selectedWorker === worker.label ? 'selected' : ''}`}
+                    onClick={() => setSelectedWorker(worker.label)}
+                    title="Click to focus this worker"
+                  >
+                    <div className="worker-card-header">
+                      <h3>Worker {worker.label}</h3>
+                      <span className={`status ${worker.status.toLowerCase()}`}>
+                        {worker.status}
+                      </span>
                     </div>
-                    <div className="worker-metrics">
-                      <span>Queue: {worker.queue}</span>
-                      <span>Errors: {worker.errors}</span>
+                    <div className="worker-card-body">
+                      <div className="mini-bot">
+                        {renderRobotSvg(robotPrefix)}
+                      </div>
+                      <div className="worker-metrics">
+                        <span>Queue: {worker.queue}</span>
+                        <span>Errors: {worker.errors}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="cache-row">
-                    <span>Cache Warmth</span>
-                    <div className="bar">
-                      <div
-                        className="bar-fill"
-                        style={{ width: `${worker.cache_warmth}%` }}
-                      />
+                    <div className="cache-row">
+                      <span>Cache Warmth</span>
+                      <div className="bar">
+                        <div
+                          className="bar-fill"
+                          style={{ width: `${worker.cache_warmth}%` }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))
+                  </button>
+                )
+              })
             )}
           </div>
         </aside>

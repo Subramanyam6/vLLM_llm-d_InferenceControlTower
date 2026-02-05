@@ -4,13 +4,7 @@ This folder adds service-mesh artifacts on top of the existing project so you ca
 
 If you want everything in one command, run:
 ```bash
-./run_mesh_demo.sh
-```
-Then start the React UI:
-```bash
-cd frontend
-npm install
-npm run dev
+MODE=GRPC ./run_all.sh
 ```
 
 ## What it deploys
@@ -34,15 +28,4 @@ kind load docker-image inference-control-tower-grpc:local --name llm-d-sim
 ```
 
 ## Deploy
-```bash
-./k8s_mesh/deploy.sh
-```
-
-## Port-forward the deployed gRPC service and call from app
-```bash
-./k8s_mesh/port_forward_ingress.sh
-export GRPC_TARGET=localhost:15051
-python3 app.py
-```
-
-Then pick backend `GRPC` in the UI.
+Use `run_all.sh` (it handles build, deploy, port-forward, and app startup).

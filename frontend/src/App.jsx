@@ -55,8 +55,18 @@ function App() {
   const disableGrpc = ['1', 'true', 'yes'].includes(
     String(import.meta.env.VITE_DISABLE_GRPC || '').toLowerCase(),
   )
+  const enableLlmd = ['1', 'true', 'yes'].includes(
+    String(import.meta.env.VITE_ENABLE_LLMD || '').toLowerCase(),
+  )
+  const lockMode = ['1', 'true', 'yes'].includes(
+    String(import.meta.env.VITE_LOCK_MODE || '').toLowerCase(),
+  )
   const normalizedMode = initialMode === 'Light-weight Demo' ? 'SIM' : initialMode
-  const [mode, setMode] = useState(disableGrpc ? 'SIM' : normalizedMode)
+  const [mode, setMode] = useState(() => {
+    if (disableGrpc && normalizedMode === 'GRPC') return 'SIM'
+    if (!enableLlmd && normalizedMode === 'LLMD') return 'SIM'
+    return normalizedMode
+  })
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [response, setResponse] = useState('')
@@ -92,8 +102,15 @@ function App() {
         setRateLimit(data.rate_limit <= 5)
       }
       if (data.backend) {
-        const nextMode = data.backend === 'GRPC' ? 'GRPC' : 'SIM'
-        setMode(disableGrpc ? 'SIM' : nextMode)
+        const nextMode =
+          data.backend === 'LLMD' ? 'LLMD' : data.backend === 'GRPC' ? 'GRPC' : 'SIM'
+        if (disableGrpc && nextMode === 'GRPC') {
+          setMode('SIM')
+        } else if (!enableLlmd && nextMode === 'LLMD') {
+          setMode('SIM')
+        } else {
+          setMode(nextMode)
+        }
       }
       if (data.selected_worker) setSelectedWorker(data.selected_worker)
       if (Array.isArray(data.why)) setWhy(data.why)
@@ -138,8 +155,15 @@ function App() {
         setRateLimit(data.rate_limit <= 5)
       }
       if (data.backend) {
-        const nextMode = data.backend === 'GRPC' ? 'GRPC' : 'SIM'
-        setMode(disableGrpc ? 'SIM' : nextMode)
+        const nextMode =
+          data.backend === 'LLMD' ? 'LLMD' : data.backend === 'GRPC' ? 'GRPC' : 'SIM'
+        if (disableGrpc && nextMode === 'GRPC') {
+          setMode('SIM')
+        } else if (!enableLlmd && nextMode === 'LLMD') {
+          setMode('SIM')
+        } else {
+          setMode(nextMode)
+        }
       }
       if (data.selected_worker) setSelectedWorker(data.selected_worker)
       if (Array.isArray(data.why)) setWhy(data.why)
@@ -188,8 +212,15 @@ function App() {
       if (data.scale_status) setScaleStatus(data.scale_status)
       if (typeof data.scale_error === 'string') setScaleError(data.scale_error)
       if (data.mode) {
-        const nextMode = data.mode === 'GRPC' ? 'GRPC' : 'SIM'
-        setMode(disableGrpc ? 'SIM' : nextMode)
+        const nextMode =
+          data.mode === 'LLM-D (local)' ? 'LLMD' : data.mode === 'GRPC' ? 'GRPC' : 'SIM'
+        if (disableGrpc && nextMode === 'GRPC') {
+          setMode('SIM')
+        } else if (!enableLlmd && nextMode === 'LLMD') {
+          setMode('SIM')
+        } else {
+          setMode(nextMode)
+        }
       }
       setChatHistory((prev) => [
         ...prev,
@@ -206,6 +237,8 @@ function App() {
 
   const handleModeChange = (nextMode) => {
     if (disableGrpc && nextMode === 'GRPC') return
+    if (!enableLlmd && nextMode === 'LLMD') return
+    if (lockMode && nextMode !== mode) return
     setMode(nextMode)
     updateState({ backend: nextMode })
   }
@@ -228,7 +261,16 @@ function App() {
     updateState({ delay_s: delay, error_rate: errorRate })
   }
 
-  const modeLabel = mode === 'SIM' ? 'Light-weight Demo' : 'GRPC'
+  const modeLabel =
+    mode === 'SIM' ? 'Light-weight Demo' : mode === 'LLMD' ? 'LLM-D (local)' : 'GRPC'
+  const scaleLabel =
+    scaleStatus === 'error'
+      ? `Scale failed${scaleError ? `: ${scaleError}` : ''}`
+      : scaleStatus === 'ok'
+        ? mode === 'LLMD'
+          ? 'Scaled in Kubernetes (llm-d)'
+          : 'Scaled in Kubernetes'
+        : 'Local scale'
   const hostedTitle = disableGrpc ? 'Hosted (SIM mode)' : 'SIM mode (no local services)'
   const hostedNote = disableGrpc
     ? 'Runs in the hosted UI — no local services required.'
@@ -350,6 +392,7 @@ function App() {
               type="button"
               className={mode === 'SIM' ? 'active' : ''}
               title="Run the local simulated worker pool"
+              disabled={lockMode && mode !== 'SIM'}
               onClick={() => handleModeChange('SIM')}
             >
               Light-weight Demo
@@ -364,10 +407,22 @@ function App() {
                   ? 'gRPC requires a local install. Download and run locally.'
                   : 'Send requests to the gRPC backend'
               }
+              disabled={(lockMode && mode !== 'GRPC') || disableGrpc}
               onClick={() => handleModeChange('GRPC')}
             >
               gRPC
             </button>
+            {enableLlmd && (
+              <button
+                type="button"
+                className={mode === 'LLMD' ? 'active' : ''}
+                title="Use the local llm-d gateway (simulated vLLM)"
+                disabled={lockMode && mode !== 'LLMD'}
+                onClick={() => handleModeChange('LLMD')}
+              >
+                LLM-D (local)
+              </button>
+            )}
           </div>
         </div>
         <div className="scale">
@@ -379,7 +434,7 @@ function App() {
             value={scale}
             onChange={(e) => handleScaleChange(Number(e.target.value))}
             style={{ '--percent': `${((scale - 1) / 4) * 100}%` }}
-            title="Number of workers (SIM) or replicas (gRPC)"
+            title="Number of workers (SIM) or replicas (gRPC/LLM-D)"
           />
           <div className="ticks">
             {[1, 2, 3, 4, 5].map((t) => (
@@ -387,11 +442,7 @@ function App() {
             ))}
           </div>
           <div className={`scale-status ${scaleStatus}`}>
-            {scaleStatus === 'error'
-              ? `Scale failed${scaleError ? `: ${scaleError}` : ''}`
-              : scaleStatus === 'ok'
-              ? 'Scaled in Kubernetes'
-              : 'Local scale'}
+            {scaleLabel}
           </div>
         </div>
       </header>
@@ -415,9 +466,16 @@ function App() {
               <div className="info-block-title">Local-Only (requires setup)</div>
               <ul className="info-list">
                 <li>gRPC backend mode with real workers.</li>
+                <li>llm-d gateway mode (set <code>VITE_ENABLE_LLMD=1</code>).</li>
+                <li>vLLM dev image via OpenAI HTTP (set <code>VLLM_HTTP_URL</code>).</li>
                 <li>Kubernetes scaling + service-mesh routing.</li>
                 <li>Local gateway + mesh for true backend traffic.</li>
               </ul>
+              {lockMode && (
+                <div className="info-note">
+                  Mode is locked for this run to prevent misrouted traffic.
+                </div>
+              )}
             </div>
           </div>
           <ul className="info-list info-meta">
@@ -428,15 +486,19 @@ function App() {
             </li>
             <li>
               <strong>Tech:</strong> React (Vite) UI, Python gateway, gRPC
-              simulator, Docker, and K8s/Istio hooks (optional OTEL).
+              simulator, vLLM OpenAI HTTP, Docker, K8s/Istio hooks, and OTEL
+              console export.
             </li>
             <li>
               <strong>llm-d / vLLM mimic:</strong> Worker selection, retries,
               rate limits, and observability patterns without a full GPU
-              cluster. Runs inside the llm-d mesh (Kubernetes namespace
-              <code>llm-d-mesh</code>) with a gRPC inference-sim image:
-              <code>inference-control-tower-grpc:local</code> (built from
-              <code>Dockerfile.grpc-server</code>).
+              cluster. Optional llm-d local mode routes through an llm-d
+              gateway (Kubernetes namespace <code>llm-d</code>) using the
+              official <code>llm-d-inference-sim</code> image. gRPC mode runs
+              in the llm-d mesh (<code>llm-d-mesh</code>) with a local
+              inference-sim image built from <code>Dockerfile.grpc-server</code>.
+              Can also target a local vLLM dev image via{' '}
+              <code>VLLM_HTTP_URL</code>.
             </li>
             <li>
               <strong>Tools (hosted/local):</strong> Hosted via Docker (HF

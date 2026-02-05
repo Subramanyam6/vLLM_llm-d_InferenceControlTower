@@ -16,11 +16,14 @@ _HOST = os.getenv("API_HOST") or os.getenv("APP_HOST") or (
 )
 _MESH_NAMESPACE = os.getenv("MESH_NAMESPACE", "llm-d-mesh")
 _MESH_DEPLOYMENT = os.getenv("MESH_DEPLOYMENT", "grpc-inference-sim")
+_LLMD_NAMESPACE = os.getenv("LLMD_NAMESPACE", "llm-d")
+_LLMD_DEPLOYMENT = os.getenv("LLMD_DEPLOYMENT", "llm-d-modelservice-decode")
 _ROUTING_MODE = os.getenv("ROUTING_MODE", "least_queue")
 _DEFAULT_WORKERS = max(1, int(os.getenv("DEFAULT_SIM_WORKERS", "2")))
 _DEFAULT_RATE_LIMIT = int(os.getenv("DEFAULT_RATE_LIMIT", "60"))
 _DEFAULT_SCALE = int(os.getenv("DEFAULT_SCALE", "3"))
 _DISABLE_GRPC = str(os.getenv("DISABLE_GRPC", "")).lower() in ("1", "true", "yes")
+_ENABLE_LLMD = str(os.getenv("ENABLE_LLMD_LOCAL", "")).lower() in ("1", "true", "yes")
 _STATIC_DIR = os.path.abspath(
     os.getenv("STATIC_DIR", os.path.join(os.path.dirname(__file__), "frontend", "dist"))
 )
@@ -72,10 +75,14 @@ _STATE = {
 
 
 def _normalize_backend(backend):
-    if _DISABLE_GRPC:
+    if _DISABLE_GRPC and backend in ("GRPC", "gRPC"):
         return "SIM"
     if backend in ("Light-weight Demo", "SIM"):
         return "SIM"
+    if backend == "LLMD" and not _ENABLE_LLMD:
+        return "SIM"
+    if backend == "LLMD":
+        return "LLMD"
     return "GRPC"
 
 
@@ -107,6 +114,31 @@ def _scale_workers(target, backend_value):
                     _MESH_NAMESPACE,
                     "scale",
                     f"deployment/{_MESH_DEPLOYMENT}",
+                    f"--replicas={target}",
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5,
+            )
+            return target, "ok", None
+        except subprocess.TimeoutExpired:
+            return target, "error", "kubectl timeout"
+        except subprocess.CalledProcessError as exc:
+            msg = (exc.stderr or exc.stdout or "").strip()
+            return target, "error", msg or "kubectl failed"
+        except Exception as exc:
+            return target, "error", str(exc)
+    if backend_value == "LLMD":
+        try:
+            subprocess.run(
+                [
+                    "kubectl",
+                    "-n",
+                    _LLMD_NAMESPACE,
+                    "scale",
+                    f"deployment/{_LLMD_DEPLOYMENT}",
                     f"--replicas={target}",
                 ],
                 check=True,
@@ -190,7 +222,11 @@ def _build_state_payload(selected_id=0):
     worker = snapshot[selected_id] if snapshot and selected_id < len(snapshot) else None
     return {
         "backend": _STATE["backend"],
-        "mode": "Light-weight Demo" if _STATE["backend"] == "SIM" else "GRPC",
+        "mode": (
+            "Light-weight Demo"
+            if _STATE["backend"] == "SIM"
+            else ("LLM-D (local)" if _STATE["backend"] == "LLMD" else "GRPC")
+        ),
         "scale": _STATE["scale"],
         "scale_status": _STATE["scale_status"],
         "scale_error": _STATE["scale_error"],
@@ -256,7 +292,11 @@ def _handle_request(payload):
     )
 
     status = "OK" if result["error"] is None else "ERROR"
-    selected_mode = "Light-weight Demo" if backend_value == "SIM" else "GRPC"
+    selected_mode = (
+        "Light-weight Demo"
+        if backend_value == "SIM"
+        else ("LLM-D (local)" if backend_value == "LLMD" else "GRPC")
+    )
     snapshot = gateway.snapshot()
     display_worker = 0
     if isinstance(result["worker_id"], int):

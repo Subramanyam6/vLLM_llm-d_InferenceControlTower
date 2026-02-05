@@ -6,6 +6,8 @@ import random
 import threading
 import time
 import uuid
+import urllib.error
+import urllib.request
 
 # Why a small token bucket: it shows rate limiting without extra deps or infrastructure.
 class TokenBucket:
@@ -207,7 +209,18 @@ class Gateway:
             return _result_error(request_id, "rate_limited", trace, t0)
 
         if backend == "GRPC":
+            vllm_url = os.getenv("VLLM_HTTP_URL") or os.getenv("VLLM_OPENAI_URL")
+            if vllm_url:
+                return self._handle_vllm_http(prompt, request_id, trace, t0, vllm_url)
             return self._handle_grpc(prompt, request_id, trace, t0, grpc_target)
+        if backend == "LLMD":
+            llmd_url = (
+                os.getenv("LLMD_HTTP_URL")
+                or os.getenv("LLM_D_HTTP_URL")
+                or os.getenv("LLMD_GATEWAY_URL")
+                or "http://localhost:8000"
+            )
+            return self._handle_llmd_http(prompt, request_id, trace, t0, llmd_url)
 
         return self._handle_sim(prompt, request_id, trace, t0, routing_mode)
 
@@ -353,11 +366,158 @@ class Gateway:
                 {"mode": "grpc", "target": target},
             )
 
+    def _handle_vllm_http(self, prompt, request_id, trace, t0, base_url):
+        model_name = (
+            os.getenv("MODEL_NAME")
+            or os.getenv("LLMD_MODEL")
+            or os.getenv("MODEL")
+            or "fake-model"
+        )
+        url = base_url.rstrip("/") + "/v1/completions"
+        payload = {
+            "model": model_name,
+            "prompt": prompt,
+            "max_tokens": 128,
+            "temperature": 0.2,
+        }
+        trace.append((time.time(), "vllm_http_request"))
+        _otel_event(self._otel_tracer, "vllm_http_request", {"url": url})
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                data = resp.read().decode("utf-8")
+            parsed = json.loads(data)
+            text = _parse_openai_response(parsed)
+            latency_ms = (time.time() - t0) * 1000.0
+            trace.append((time.time(), "responded"))
+            return {
+                "request_id": request_id,
+                "text": text,
+                "error": None,
+                "worker_id": "vllm",
+                "cache_hit": None,
+                "latency_ms": latency_ms,
+                "trace": trace,
+                "reason": {"mode": "vllm_http", "url": url},
+            }
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8")
+            except Exception:
+                body = ""
+            trace.append((time.time(), "vllm_http_error"))
+            return _result_error(
+                request_id,
+                f"vllm_http_error: {e.code} {body}".strip(),
+                trace,
+                t0,
+                {"mode": "vllm_http", "url": url},
+            )
+        except Exception as e:
+            trace.append((time.time(), "vllm_http_error"))
+            return _result_error(
+                request_id,
+                f"vllm_http_error: {e}",
+                trace,
+                t0,
+                {"mode": "vllm_http", "url": url},
+            )
+
+    def _handle_llmd_http(self, prompt, request_id, trace, t0, base_url):
+        model_name = (
+            os.getenv("MODEL_NAME")
+            or os.getenv("LLMD_MODEL")
+            or os.getenv("MODEL")
+            or "fake-model"
+        )
+        base_url = base_url.rstrip("/")
+        if "/v1/" in base_url:
+            url = base_url
+        else:
+            url = base_url + "/v1/chat/completions"
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 128,
+            "temperature": 0.2,
+        }
+        trace.append((time.time(), "llmd_http_request"))
+        _otel_event(self._otel_tracer, "llmd_http_request", {"url": url})
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                data = resp.read().decode("utf-8")
+            parsed = json.loads(data)
+            text = _parse_openai_response(parsed)
+            latency_ms = (time.time() - t0) * 1000.0
+            trace.append((time.time(), "responded"))
+            return {
+                "request_id": request_id,
+                "text": text,
+                "error": None,
+                "worker_id": "llm-d",
+                "cache_hit": None,
+                "latency_ms": latency_ms,
+                "trace": trace,
+                "reason": {"mode": "llm-d", "url": url},
+            }
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8")
+            except Exception:
+                body = ""
+            trace.append((time.time(), "llmd_http_error"))
+            return _result_error(
+                request_id,
+                f"llmd_http_error: {e.code} {body}".strip(),
+                trace,
+                t0,
+                {"mode": "llm-d", "url": url},
+            )
+        except Exception as e:
+            trace.append((time.time(), "llmd_http_error"))
+            return _result_error(
+                request_id,
+                f"llmd_http_error: {e}",
+                trace,
+                t0,
+                {"mode": "llm-d", "url": url},
+            )
+
 def _parse_grpc_response(data):
     if isinstance(data, dict):
         for key in ("text", "response", "output"):
             if data.get(key):
                 return str(data[key])
+    return str(data)
+
+
+def _parse_openai_response(data):
+    if not isinstance(data, dict):
+        return str(data)
+    choices = data.get("choices") or []
+    if not choices:
+        return str(data)
+    first = choices[0] or {}
+    if "text" in first and first["text"] is not None:
+        return str(first["text"])
+    message = first.get("message") or {}
+    if message.get("content"):
+        return str(message["content"])
     return str(data)
 
 

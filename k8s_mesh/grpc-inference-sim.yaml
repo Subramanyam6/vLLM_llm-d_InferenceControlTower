@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-inference-sim
+  namespace: llm-d-mesh
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: grpc-inference-sim
+  template:
+    metadata:
+      labels:
+        app: grpc-inference-sim
+    spec:
+      containers:
+      - name: grpc-inference-sim
+        # Replace with your built image that includes this repo's grpc_backend package.
+        image: inference-control-tower-grpc:local
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 50051
+          name: grpc
+          protocol: TCP
+        readinessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: grpc
+          initialDelaySeconds: 10
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grpc-inference-sim
+  namespace: llm-d-mesh
+spec:
+  selector:
+    app: grpc-inference-sim
+  ports:
+  - name: grpc
+    port: 50051
+    targetPort: grpc
+    protocol: TCP
+    appProtocol: grpc

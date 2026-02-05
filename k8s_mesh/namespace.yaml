@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-d-mesh
+  labels:
+    istio-injection: enabled

@@ -107,6 +107,9 @@ ensure_istio_gateway() {
   helm upgrade --install llm-d-infra llm-d-infra/llm-d-infra \
     --namespace "${LLMD_NAMESPACE}" --create-namespace --version v1.3.6 >/dev/null
 
+  # Avoid helm/scale field-manager conflicts by recreating the modelservice deployment.
+  kubectl -n "${LLMD_NAMESPACE}" delete deployment llm-d-modelservice-decode --ignore-not-found >/dev/null
+
   cat <<YAML >/tmp/llm-d-modelservice-values.yaml
 modelArtifacts:
   name: ${MODEL_NAME}

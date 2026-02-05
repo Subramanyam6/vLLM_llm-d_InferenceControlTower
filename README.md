@@ -11,6 +11,8 @@ pinned: false
 ## Overview
 A lightweight control tower UI + gateway that routes LLM requests across workers with cache-aware and queue-aware logic. It demonstrates routing, retries, rate limits, and basic observability without requiring a GPU cluster.
 
+Live demo (HF Spaces): `https://huggingface.co/spaces/Subramanyam6/vLLM_llm-d_InferenceControlTower`
+
 ## Quick Start (Local, All Modes Enabled)
 ```bash
 git clone https://huggingface.co/spaces/Subramanyam6/vLLM_llm-d_InferenceControlTower

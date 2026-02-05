@@ -19,7 +19,7 @@ RUN python -m pip install --no-cache-dir -r requirements.txt
 
 COPY app.py core.py bench.py ./
 COPY grpc_backend ./grpc_backend
-COPY frontend/dist ./frontend/dist
+COPY --from=ui-build /app/frontend/dist ./frontend/dist
 
 EXPOSE 7860
 CMD ["python", "app.py"]

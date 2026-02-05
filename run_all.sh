@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODE="${MODE:-SIM}" # SIM | GRPC | LLMD
+MODE="${MODE:-LOCAL}" # LOCAL | SIM | GRPC | LLMD
 API_HOST="${API_HOST:-127.0.0.1}"
 API_PORT="${API_PORT:-8000}"
 UI_PORT="${UI_PORT:-5173}"
@@ -180,6 +180,7 @@ YAML
 
 start_api() {
   DEFAULT_BACKEND="${1}" ENABLE_LLMD_LOCAL="${2:-}" LLMD_HTTP_URL="${3:-}" \
+    DISABLE_GRPC="${4:-}" GRPC_TARGET="${5:-}" \
     MODEL_NAME="${MODEL_NAME}" API_HOST="${API_HOST}" API_PORT="${API_PORT}" \
     "${ROOT}/.venv/bin/python" "${ROOT}/app.py" > /tmp/ict_api.log 2>&1 &
   API_PID=$!
@@ -219,9 +220,28 @@ ensure_python
 ensure_node
 
 case "${MODE}" in
+  LOCAL)
+    for p in "${GRPC_PORT}" "${LLMD_LOCAL_PORT}"; do
+      if port_in_use "${p}"; then
+        echo "Port ${p} is already in use." >&2
+        exit 1
+      fi
+    done
+    ensure_docker
+    ensure_kind_cluster
+    ensure_istio_gateway
+    kubectl -n "${LLMD_NAMESPACE}" port-forward "svc/${LLMD_GATEWAY_SVC}" "${LLMD_LOCAL_PORT}:${LLMD_GATEWAY_PORT}" \
+      > /tmp/ict_llmd_pf.log 2>&1 &
+    PF_PID=$!
+    sleep 2
+    start_grpc
+    GRPC_TARGET="${GRPC_HOST}:${GRPC_PORT}"
+    start_api "SIM" "1" "http://localhost:${LLMD_LOCAL_PORT}" "0" "${GRPC_TARGET}"
+    VITE_ENABLE_LLMD=1 VITE_DISABLE_GRPC=0 start_ui "SIM"
+    ;;
   SIM)
-    start_api "SIM"
-    start_ui "SIM"
+    start_api "SIM" "" "" "1"
+    VITE_DISABLE_GRPC=1 VITE_ENABLE_LLMD=0 start_ui "SIM"
     ;;
   GRPC)
     for p in "${GRPC_PORT}"; do
@@ -231,11 +251,9 @@ case "${MODE}" in
       fi
     done
     start_grpc
-    GRPC_TARGET="${GRPC_HOST}:${GRPC_PORT}" DEFAULT_BACKEND="GRPC" \
-      GRPC_TARGET="${GRPC_TARGET}" "${ROOT}/.venv/bin/python" "${ROOT}/app.py" \
-      > /tmp/ict_api.log 2>&1 &
-    API_PID=$!
-    VITE_LOCK_MODE=1 start_ui "GRPC"
+    GRPC_TARGET="${GRPC_HOST}:${GRPC_PORT}"
+    start_api "GRPC" "" "" "0" "${GRPC_TARGET}"
+    VITE_DISABLE_GRPC=0 VITE_ENABLE_LLMD=0 VITE_LOCK_MODE=1 start_ui "GRPC"
     ;;
   LLMD)
     if port_in_use "${LLMD_LOCAL_PORT}"; then
@@ -249,11 +267,11 @@ case "${MODE}" in
       > /tmp/ict_llmd_pf.log 2>&1 &
     PF_PID=$!
     sleep 2
-    start_api "LLMD" "1" "http://localhost:${LLMD_LOCAL_PORT}"
-    VITE_ENABLE_LLMD=1 VITE_LOCK_MODE=1 start_ui "LLMD"
+    start_api "LLMD" "1" "http://localhost:${LLMD_LOCAL_PORT}" "0"
+    VITE_DISABLE_GRPC=0 VITE_ENABLE_LLMD=1 VITE_LOCK_MODE=1 start_ui "LLMD"
     ;;
   *)
-    echo "Unknown MODE: ${MODE} (use SIM|GRPC|LLMD)" >&2
+    echo "Unknown MODE: ${MODE} (use LOCAL|SIM|GRPC|LLMD)" >&2
     exit 1
     ;;
 esac

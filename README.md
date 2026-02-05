@@ -11,23 +11,23 @@ pinned: false
 ## Overview
 A lightweight control tower UI + gateway that routes LLM requests across workers with cache-aware and queue-aware logic. It demonstrates routing, retries, rate limits, and basic observability without requiring a GPU cluster.
 
-## Quick Start (Local, SIM Mode)
+## Quick Start (Local, All Modes Enabled)
 ```bash
 git clone https://huggingface.co/spaces/Subramanyam6/vLLM_llm-d_InferenceControlTower
 cd vLLM_llm-d_InferenceControlTower
 
 ./run_all.sh
 ```
-This starts the API and UI. Open `http://127.0.0.1:5173`.
+This starts the API, gRPC simulator, and llm-d simulator, so you can switch modes in the UI.
+Open `http://127.0.0.1:5173`.
 
-## gRPC Mode (Local, Simulated)
-One command:
+## gRPC Mode (Local, Simulated, Locked)
 ```bash
 MODE=GRPC ./run_all.sh
 ```
 The UI is locked to gRPC for this run to avoid misrouted traffic.
 
-## llm-d Mode (Local Only, Official Simulator)
+## llm-d Mode (Local Only, Official Simulator, Locked)
 This uses the official `llm-d-inference-sim` image behind the llm-d gateway.
 Enable it only for local testing:
 ```bash
@@ -35,6 +35,9 @@ MODE=LLMD ./run_all.sh
 ```
 The script enables the UI mode automatically.
 The UI is locked to llm-d for this run to avoid gRPC errors.
+
+## Hosted (HF Spaces)
+Hosted runs show Light-weight Demo only. gRPC and llm-d are disabled in the UI.
 
 ## vLLM Dev Image (Local, Real Backend)
 Run the official vLLM OpenAI-compatible server (requires Docker and a supported GPU):

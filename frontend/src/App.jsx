@@ -229,6 +229,10 @@ function App() {
   }
 
   const modeLabel = mode === 'SIM' ? 'Light-weight Demo' : 'GRPC'
+  const hostedTitle = disableGrpc ? 'Hosted (SIM mode)' : 'SIM mode (no local services)'
+  const hostedNote = disableGrpc
+    ? 'Runs in the hosted UI — no local services required.'
+    : 'No local services required — runs inside this UI.'
 
   return (
     <div className="shell">
@@ -299,20 +303,29 @@ function App() {
         </div>
         <div className="info-content">
           <div className="info-title">Project Snapshot</div>
-          <ul className="info-list">
+          <div className="info-split">
+            <div className="info-block hosted">
+              <div className="info-block-title">{hostedTitle}</div>
+              <ul className="info-list">
+                <li>{hostedNote}</li>
+                <li>Send prompts, see routing decisions, and simulate latency/rate limits.</li>
+                <li>Observe worker health, queues, and cache warmth.</li>
+              </ul>
+            </div>
+            <div className="info-block local">
+              <div className="info-block-title">Local-Only (requires setup)</div>
+              <ul className="info-list">
+                <li>gRPC backend mode with real workers.</li>
+                <li>Kubernetes scaling + service-mesh routing.</li>
+                <li>Local gateway + mesh for true backend traffic.</li>
+              </ul>
+            </div>
+          </div>
+          <ul className="info-list info-meta">
             <li>
               <strong>What it is:</strong> A control tower UI + gateway that
               routes LLM requests across workers with cache-aware, queue-aware
               logic.
-            </li>
-            <li>
-              <strong>Hosted (SIM mode):</strong> Send prompts, see routing
-              decisions, simulate latency/rate limits, and observe worker
-              health.
-            </li>
-            <li>
-              <strong>Local unlocks:</strong> gRPC mode, Kubernetes scaling,
-              and service-mesh routing with real backends.
             </li>
             <li>
               <strong>Tech:</strong> React (Vite) UI, Python gateway, gRPC

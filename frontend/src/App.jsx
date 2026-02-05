@@ -233,11 +233,6 @@ function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="window-controls">
-          <span className="dot red" />
-          <span className="dot yellow" />
-          <span className="dot green" />
-        </div>
         <div className="title-block">
           <div className="title-icon" />
           <div>
@@ -297,6 +292,40 @@ function App() {
           </div>
         </div>
       </header>
+
+      <section className="info-card">
+        <div className="info-icon" aria-hidden="true">
+          i
+        </div>
+        <div className="info-content">
+          <div className="info-title">Project Snapshot</div>
+          <ul className="info-list">
+            <li>
+              <strong>What it is:</strong> A control tower UI + gateway that
+              routes LLM requests across workers with cache-aware, queue-aware
+              logic.
+            </li>
+            <li>
+              <strong>Hosted (SIM mode):</strong> Send prompts, see routing
+              decisions, simulate latency/rate limits, and observe worker
+              health.
+            </li>
+            <li>
+              <strong>Local unlocks:</strong> gRPC mode, Kubernetes scaling,
+              and service-mesh routing with real backends.
+            </li>
+            <li>
+              <strong>Tech:</strong> React (Vite) UI, Python gateway, gRPC
+              simulator, and K8s/Istio hooks.
+            </li>
+            <li>
+              <strong>llm-d / vLLM mimic:</strong> Worker selection, retries,
+              rate limits, and observability patterns without a full GPU
+              cluster. Uses dev images to avoid running heavy LLMs locally.
+            </li>
+          </ul>
+        </div>
+      </section>
 
       <div className="main-grid">
         <aside className="panel chat-panel">

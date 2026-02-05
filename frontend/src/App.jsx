@@ -83,6 +83,14 @@ function App() {
   const [rateLimit, setRateLimit] = useState(false)
   const [chatHistory, setChatHistory] = useState([])
   const [error, setError] = useState('')
+  const [lastMeta, setLastMeta] = useState({
+    requestId: '',
+    latencyMs: null,
+    cacheHit: null,
+    worker: '',
+  })
+  const isSim = mode === 'SIM'
+  const cacheLabel = isSim ? 'Cache Warmth' : 'Cache Warmth (Light-weight Demo only)'
   const selectedWorkerData =
     workers.find((worker) => worker.label === selectedWorker) || workers[0]
 
@@ -211,6 +219,15 @@ function App() {
       setSelectedWorker(data.selected_worker || 'A')
       if (data.scale_status) setScaleStatus(data.scale_status)
       if (typeof data.scale_error === 'string') setScaleError(data.scale_error)
+      setLastMeta({
+        requestId: data.request_id || '',
+        latencyMs: typeof data.latency_ms === 'number' ? data.latency_ms : null,
+        cacheHit:
+          typeof data.cache_hit === 'boolean' || data.cache_hit === null
+            ? data.cache_hit
+            : null,
+        worker: data.selected_worker || '',
+      })
       if (data.mode) {
         const nextMode =
           data.mode === 'LLM-D (local)' ? 'LLMD' : data.mode === 'GRPC' ? 'GRPC' : 'SIM'
@@ -551,6 +568,12 @@ function App() {
             <div className="response-body">
               {response || 'Response will appear here.'}
             </div>
+            <div className="response-meta">
+              <span>Worker: {lastMeta.worker || '—'}</span>
+              <span>Cache hit: {lastMeta.cacheHit === true ? 'Yes' : lastMeta.cacheHit === false ? 'No' : 'N/A'}</span>
+              <span>Latency: {lastMeta.latencyMs !== null ? `${lastMeta.latencyMs} ms` : '—'}</span>
+              <span>Request: {lastMeta.requestId || '—'}</span>
+            </div>
           </div>
         </aside>
 
@@ -686,11 +709,11 @@ function App() {
                       <span>Errors: {selectedWorkerData.errors}</span>
                     </div>
                     <div className="cache-row">
-                      <span>Cache Warmth</span>
+                      <span>{cacheLabel}</span>
                       <div className="bar">
                         <div
                           className="bar-fill"
-                          style={{ width: `${selectedWorkerData.cache_warmth}%` }}
+                          style={{ width: `${isSim ? selectedWorkerData.cache_warmth : 0}%` }}
                         />
                       </div>
                     </div>
@@ -737,11 +760,11 @@ function App() {
                       </div>
                     </div>
                     <div className="cache-row">
-                      <span>Cache Warmth</span>
+                      <span>{cacheLabel}</span>
                       <div className="bar">
                         <div
                           className="bar-fill"
-                          style={{ width: `${worker.cache_warmth}%` }}
+                          style={{ width: `${isSim ? worker.cache_warmth : 0}%` }}
                         />
                       </div>
                     </div>

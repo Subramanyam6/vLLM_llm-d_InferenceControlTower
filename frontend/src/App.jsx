@@ -945,7 +945,14 @@ function App() {
               <ul className="info-list">
                 <li>gRPC backend mode with real workers.</li>
                 <li>llm-d gateway mode (set <code>VITE_ENABLE_LLMD=1</code>).</li>
-                <li>Optional SGLang pre-route before llm-d (set <code>ENABLE_SGLANG_FRONT=1</code> on API).</li>
+                <li>
+                  SGLang pre-route for llm-d (set <code>ENABLE_SGLANG_FRONT=1</code>):
+                  rewrites prompts first, then forwards to llm-d.
+                </li>
+                <li>
+                  SGLang endpoint for this stage: <code>SGLANG_HTTP_URL</code>{' '}
+                  (OpenAI chat API format).
+                </li>
                 <li>vLLM dev image via OpenAI HTTP (set <code>VLLM_HTTP_URL</code>).</li>
                 <li>Kubernetes scaling + service-mesh routing.</li>
                 <li>Local gateway + mesh for true backend traffic.</li>
@@ -965,8 +972,8 @@ function App() {
             </li>
             <li>
               <strong>Tech:</strong> React (Vite) UI, Python gateway, gRPC
-              simulator, vLLM OpenAI HTTP, Docker, K8s/Istio hooks, and OTEL
-              console export.
+              simulator, SGLang pre-route, vLLM OpenAI HTTP, Docker, K8s/Istio
+              hooks, and OTEL console export.
             </li>
             <li>
               <strong>llm-d / vLLM mimic:</strong> Worker selection, retries,
@@ -978,6 +985,13 @@ function App() {
               inference-sim image built from <code>Dockerfile.grpc-server</code>.
               Can also target a local vLLM dev image via{' '}
               <code>VLLM_HTTP_URL</code>.
+            </li>
+            <li>
+              <strong>SGLang stage behavior:</strong> When enabled in local
+              llm-d mode, the gateway sends your prompt to SGLang first to
+              rewrite it into a concise downstream instruction, then forwards
+              that rewritten prompt to llm-d. Hosted HF mode stays SIM-only, so
+              this stage is intentionally disabled there.
             </li>
             <li>
               <strong>Tools (hosted/local):</strong> Hosted via Docker (HF

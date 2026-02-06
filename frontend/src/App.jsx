@@ -719,10 +719,12 @@ function App() {
           ? 'Scaled in Kubernetes (llm-d)'
           : 'Scaled in Kubernetes'
         : 'Local scale'
-  const hostedTitle = disableGrpc ? 'Hosted (SIM mode)' : 'SIM mode (no local services)'
+  const hostedTitle = disableGrpc
+    ? 'Hosted (Light-weight Demo)'
+    : 'Light-weight Demo (no local services)'
   const hostedNote = disableGrpc
-    ? 'Runs in the hosted UI — no local services required.'
-    : 'No local services required — runs inside this UI.'
+    ? 'Runs in hosted mode with dummy Python functions that mimic routing and worker behavior.'
+    : 'No local services required. This Light-weight Demo uses dummy Python functions to mimic backend behavior.'
   const stressAttempts = Number(stressResults?.requests_attempted || 0)
   const stressSuccess = Number(stressResults?.requests_succeeded || 0)
   const stressFailed = Number(stressResults?.requests_failed || 0)
@@ -936,6 +938,7 @@ function App() {
               <div className="info-block-title">{hostedTitle}</div>
               <ul className="info-list">
                 <li>{hostedNote}</li>
+                <li>This path is for UX/demo flow and observability storytelling, not real backend traffic.</li>
                 <li>Send prompts, see routing decisions, and simulate latency/rate limits.</li>
                 <li>Observe worker health, queues, and cache warmth.</li>
               </ul>

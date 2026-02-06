@@ -1005,7 +1005,7 @@ function App() {
               className={`stress-results-btn${showStressResults ? ' open' : ''}`}
               onClick={handleStressToggle}
             >
-              Stress Testing Results {STRESS_RESULTS_BUTTON_DATE}
+              Stress Test {STRESS_RESULTS_BUTTON_DATE}
             </button>
             {showStressResults && (
               <div className="stress-results-panel">
@@ -1043,7 +1043,7 @@ function App() {
                       In this run, llm-d handled {stressAttempts.toLocaleString()} requests with {stressFailed.toLocaleString()} failures ({toPct(stressErrorRate)} error rate).
                     </p>
                     <p className="stress-plain">
-                      Worker distribution shown below is the raw run output; the UI does not rebalance or rewrite worker counts.
+                      The worker split below is what this llm-d run reported for 5 workers A-E (Wondering why Worker A gets so many hits).
                     </p>
                     <div className="stress-worker-grid">
                       {stressWorkerDistribution.map((item) => (

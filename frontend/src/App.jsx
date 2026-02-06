@@ -10,24 +10,46 @@ const IconSkull = () => (
   </svg>
 )
 
-const IconBolt = () => (
+const IconTimer = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path
-      d="M13 2 4 14h6l-1 8 9-12h-6z"
-      fill="currentColor"
-    />
-  </svg>
-)
-
-const IconClock = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
-    <path
-      d="M12 8v4l3 2"
+      d="M9 4h6"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
     />
+    <path
+      d="M9 20h6"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+    <path
+      d="M9 6h6v2c0 2.2-1.7 3.9-3 5 1.3 1.1 3 2.8 3 5v2H9v-2c0-2.2 1.7-3.9 3-5-1.3-1.1-3-2.8-3-5z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+  </svg>
+)
+
+const IconAlert = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      d="M12 3 3 20h18z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M12 9v5"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+    <circle cx="12" cy="17.2" r="1.2" fill="currentColor" />
   </svg>
 )
 
@@ -50,12 +72,31 @@ const IconGauge = () => (
   </svg>
 )
 
+const UserClientMarker = () => (
+  <div className="user-node-content">
+    <svg className="user-node-svg" viewBox="0 0 78 92" aria-hidden="true">
+      <circle cx="39" cy="18" r="8.6" fill="none" stroke="#ecf5ff" strokeWidth="3" />
+      <path d="M39 28c1.8 8.5 1.9 18.9.6 31" stroke="#ecf5ff" strokeWidth="3" strokeLinecap="round" />
+      <path d="M39 39 50.5 48.5" stroke="#ecf5ff" strokeWidth="3" strokeLinecap="round" />
+      <path d="M39 41 28 53.5" stroke="#ecf5ff" strokeWidth="3" strokeLinecap="round" />
+      <path d="M39.6 59.2 49.5 85.5" stroke="#ecf5ff" strokeWidth="3" strokeLinecap="round" />
+      <path d="M39.3 59.2 30.5 86.8" stroke="#ecf5ff" strokeWidth="3" strokeLinecap="round" />
+      <path d="M49.4 85.5 56 84.8" stroke="#ecf5ff" strokeWidth="3" strokeLinecap="round" />
+      <path d="M30.2 86.8 24 87.8" stroke="#ecf5ff" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+    <div className="user-node-copy">
+      <span className="user-node-title">User</span>
+    </div>
+  </div>
+)
+
 const GatewayTower = ({ size = 220, className = '' }) => (
   <div className={className} style={{ width: size, height: size }}>
     <svg
       width="100%"
       height="100%"
       viewBox="0 0 220 220"
+      overflow="visible"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
@@ -94,7 +135,7 @@ const GatewayTower = ({ size = 220, className = '' }) => (
       </defs>
 
       <g>
-        <rect x="102" y="134" width="16" height="62" rx="3" fill="#2A3B49" stroke="#1A232B" strokeWidth="3" />
+        <rect x="102" y="134" width="16" height="144" rx="3" fill="#2A3B49" stroke="#1A232B" strokeWidth="3" />
 
         <path
           d="M68 70 L152 70 L145 110 L137 110 L137 130 L83 130 L83 110 L75 110 Z"
@@ -174,8 +215,8 @@ const GatewayTower = ({ size = 220, className = '' }) => (
         <rect x="108.6" y="22" width="2.8" height="24" rx="1.4" fill="#2E3E4B" />
         <circle cx="110" cy="18" r="10" fill="#CFD6DF" stroke="#1A232B" strokeWidth="3" />
 
-        <rect x="78" y="204" width="64" height="16" rx="6" fill="#2C3A46" stroke="#1A232B" strokeWidth="3" />
-        <rect x="88" y="198" width="44" height="10" rx="4" fill="#3A4B5A" stroke="#1A232B" strokeWidth="3" />
+        <rect x="78" y="274" width="64" height="16" rx="6" fill="#2C3A46" stroke="#1A232B" strokeWidth="3" />
+        <rect x="88" y="268" width="44" height="10" rx="4" fill="#3A4B5A" stroke="#1A232B" strokeWidth="3" />
       </g>
     </svg>
   </div>
@@ -195,8 +236,8 @@ const resolveMode = (rawMode, disableGrpc, enableLlmd) => {
 }
 
 const FLIGHT_POINTS = {
-  user: { x: 12, y: 84 },
-  gateway: { x: 42, y: 82 },
+  user: { x: 12, y: 82 },
+  gateway: { x: 42, y: 83 },
   workerCardX: 84,
   workerPacketX: 74,
 }
@@ -215,6 +256,80 @@ const statusClassName = (status) => String(status || 'pending').toLowerCase()
 const STRESS_RESULTS_BUTTON_DATE = '02/06/2026'
 const INTERNAL_PILL_GAP_MS = 1000
 const DUMMY_HINT = ' (dummy - host locally to use original tools)'
+const TWINKLE_STAR_COUNT = 90
+
+const seededUnit = (seed) => {
+  const raw = Math.sin(seed * 12.9898) * 43758.5453123
+  return raw - Math.floor(raw)
+}
+
+const seededRange = (seed, min, max) => min + seededUnit(seed) * (max - min)
+
+const createTwinkleStar = (id) => {
+  return {
+    id,
+    left: seededRange(id + 101, 2, 98),
+    top: seededRange(id + 223, 2, 84),
+    sizePx: seededRange(id + 347, 0.75, 2.6),
+    minOpacity: seededRange(id + 449, 0.2, 0.48),
+    maxOpacity: seededRange(id + 557, 0.62, 1),
+    blurPx: seededRange(id + 661, 0, 1),
+    durationMs: seededRange(id + 773, 1800, 6100),
+    delayMs: seededRange(id + 881, 0, 6500),
+  }
+}
+
+const FLOWER_SOFT_COLOR_VARIANTS = [
+  { petal: '#f8fbf5', center: '#f4d761', stem: '#4f8d4d' },
+  { petal: '#ffd7e5', center: '#f2be5c', stem: '#5e9752' },
+  { petal: '#d2e8ff', center: '#f0ca6b', stem: '#4d8b49' },
+  { petal: '#fff4d4', center: '#ecbf54', stem: '#629f58' },
+  { petal: '#ffe1ef', center: '#f2be61', stem: '#4f8f4c' },
+  { petal: '#f6fbf1', center: '#f0ce73', stem: '#5b9855' },
+  { petal: '#d6f0ff', center: '#eebb59', stem: '#4d8a48' },
+  { petal: '#f5dcff', center: '#efc26d', stem: '#518e4e' },
+]
+
+const FLOWER_BRIGHT_COLOR_VARIANTS = [
+  { petal: '#ff59cf', center: '#ffe153', stem: '#51a14b' },
+  { petal: '#57f6ff', center: '#ffe15b', stem: '#4f9f53' },
+  { petal: '#7dff67', center: '#ffd95a', stem: '#4a9548' },
+  { petal: '#ff9159', center: '#fff173', stem: '#5ba75b' },
+  { petal: '#ffd24d', center: '#fffb9a', stem: '#4a9447' },
+]
+
+const GROUND_FLOWER_COUNT = 21
+
+const createGroundFlower = (id) => {
+  const useBrightPalette = seededUnit(id + 1531) > 0.62
+  const palette = useBrightPalette ? FLOWER_BRIGHT_COLOR_VARIANTS : FLOWER_SOFT_COLOR_VARIANTS
+  const colorIdx = Math.floor(seededRange(id + 1207, 0, palette.length))
+  const color = palette[colorIdx]
+  let left
+  if (id < 5) {
+    // Ensure visible flower coverage to the left of the user marker.
+    left = seededRange(id + 1601, 1.5, 10.8)
+  } else {
+    left = seededRange(id + 1291, 3, 97)
+    // Keep flowers away from the tower base zone by relocating them left.
+    if (left > 35 && left < 50) {
+      left = seededRange(id + 1901, 1.8, 11.2)
+    }
+  }
+  return {
+    id: `f${id + 1}`,
+    left,
+    scale: seededRange(id + 1361, 0.82, 1.24),
+    tilt: seededRange(id + 1471, -13, 13),
+    petal: color.petal,
+    center: color.center,
+    stem: color.stem,
+  }
+}
+
+const GROUND_FLOWERS = Array.from({ length: GROUND_FLOWER_COUNT }, (_, idx) => createGroundFlower(idx)).sort(
+  (a, b) => a.left - b.left,
+)
 
 const buildInternalPillSteps = (mode, workerLabel = '') => {
   const suffix = mode === 'SIM' ? DUMMY_HINT : ''
@@ -305,6 +420,10 @@ function App() {
     tone: 'idle',
   })
   const [lastFlightReplay, setLastFlightReplay] = useState(null)
+  const twinkleStars = useMemo(
+    () => Array.from({ length: TWINKLE_STAR_COUNT }, (_, idx) => createTwinkleStar(idx)),
+    [],
+  )
   const flightTimers = useRef([])
   const flightStartedAtRef = useRef(0)
   const isSim = mode === 'SIM'
@@ -853,7 +972,9 @@ function App() {
     <div className="shell">
       <header className="topbar">
         <div className="title-block">
-          <div className="title-icon" />
+          <div className="title-icon" aria-hidden="true">
+            <GatewayTower size={70} className="title-tower" />
+          </div>
           <div>
             <h1>LLM Inference Control Tower</h1>
             <p className="subtitle">Mode: {modeLabel}</p>
@@ -861,7 +982,7 @@ function App() {
         </div>
         <div className="wip-note">
           <span className="wip-pill">WIP</span>
-          <span>Actively evolving · {todayLabel}</span>
+          <span>{todayLabel}</span>
         </div>
         <div className="mode-switch">
           <span>Mode</span>
@@ -1168,7 +1289,7 @@ function App() {
                 title="Add 2s latency to workers"
               >
                 <span className="btn-icon">
-                  <IconBolt />
+                  <IconTimer />
                 </span>
                 <span>Inject 2s Latency</span>
               </button>
@@ -1179,7 +1300,7 @@ function App() {
                 title="Add 2s latency and errors"
               >
                 <span className="btn-icon">
-                  <IconClock />
+                  <IconAlert />
                 </span>
                 <span>Inject 2s + Errors</span>
               </button>
@@ -1219,13 +1340,70 @@ function App() {
                 Replay
               </button>
               <p className="flight-subtitle">
-                User → Gateway → Worker {highlightedFlightWorker}
+                User → Inference Control Tower → Worker {highlightedFlightWorker}
               </p>
             </div>
             <div className="flight-canvas">
-              <GatewayTower size={164} className="flight-tower" />
-              <div className={`node user${isUplinkActive ? ' active' : ''}`}>User</div>
-              <div className={`node gateway${isUplinkActive ? ' active' : ''}`}>Gateway</div>
+              <div className="flight-sky" aria-hidden="true">
+                <span className="star-layer star-layer-far" />
+                <span className="star-layer star-layer-mid" />
+                <span className="star-layer star-layer-near" />
+                <div className="twinkle-stars">
+                  {twinkleStars.map((twinkleStar) => (
+                    <span
+                      key={twinkleStar.id}
+                      className="twinkle-star"
+                      style={{
+                        '--star-left': `${twinkleStar.left}%`,
+                        '--star-top': `${twinkleStar.top}%`,
+                        '--star-size': `${twinkleStar.sizePx}px`,
+                        '--star-min-opacity': twinkleStar.minOpacity,
+                        '--star-max-opacity': twinkleStar.maxOpacity,
+                        '--star-blur': `${twinkleStar.blurPx}px`,
+                        '--star-duration': `${twinkleStar.durationMs}ms`,
+                        '--star-delay': `${twinkleStar.delayMs}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="full-moon" aria-hidden="true" />
+              <div className="flight-ground" aria-hidden="true">
+                <div className="flower-field">
+                  {GROUND_FLOWERS.map((flower) => (
+                    <span
+                      key={flower.id}
+                      className="ground-flower"
+                      style={{
+                        '--flower-left': `${flower.left}%`,
+                        '--flower-scale': flower.scale,
+                        '--flower-tilt': `${flower.tilt}deg`,
+                        '--flower-petal': flower.petal,
+                        '--flower-center': flower.center,
+                        '--flower-stem': flower.stem,
+                      }}
+                    >
+                      <span className="flower-stem" />
+                      <span className="flower-leaf flower-leaf-left" />
+                      <span className="flower-leaf flower-leaf-right" />
+                      <span className="flower-head">
+                        <span className="flower-petal flower-petal-top" />
+                        <span className="flower-petal flower-petal-right" />
+                        <span className="flower-petal flower-petal-bottom" />
+                        <span className="flower-petal flower-petal-left" />
+                        <span className="flower-petal flower-petal-diag-a" />
+                        <span className="flower-petal flower-petal-diag-b" />
+                        <span className="flower-core" />
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <GatewayTower size={197} className="flight-tower" />
+              <div className={`node user${isUplinkActive ? ' active' : ''}`} aria-label="User">
+                <UserClientMarker />
+              </div>
+              <div className={`node gateway${isUplinkActive ? ' active' : ''}`}>Inference Control Tower</div>
               <div className="flight-process" aria-live="polite">
                 <div className={`flight-process-pill ${flightProcessPill.tone}`}>
                   {flightProcessPill.label}

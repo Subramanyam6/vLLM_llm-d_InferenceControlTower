@@ -359,6 +359,17 @@ const buildInternalPillSteps = (mode, workerLabel = '') => {
 
 const toPct = (num) => `${(Number(num || 0) * 100).toFixed(2)}%`
 
+const asFiniteNumber = (value) => {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const formatMetric = (value, digits = 2, suffix = '') => {
+  const parsed = asFiniteNumber(value)
+  if (parsed === null) return 'n/a'
+  return `${parsed.toFixed(digits)}${suffix}`
+}
+
 const runDurationSec = (startedAt, endedAt) => {
   const startTs = Date.parse(startedAt || '')
   const endTs = Date.parse(endedAt || '')
@@ -852,11 +863,33 @@ function App() {
   const stressSuccessRate = stressAttempts > 0
     ? (stressSuccess / stressAttempts) * 100
     : 0
-  const stressWorkerDistribution = ['A', 'B', 'C', 'D', 'E'].map((label) => ({
-    label,
-    count: Number(stressResults?.worker_distribution?.[label] || 0),
-    pct: Number(stressResults?.worker_distribution_pct?.[label] || 0),
-  }))
+  const stressIdentityKnown = Number(stressResults?.worker_identity?.known || 0)
+  const stressIdentityMissing = Number(stressResults?.worker_identity?.missing || 0)
+  const stressIdentityGeneric = Number(stressResults?.worker_identity?.generic || 0)
+  const stressIdentityCoveragePct = Number(stressResults?.worker_identity?.coverage_pct || 0)
+  const stressWorkerDistribution = ['A', 'B', 'C', 'D', 'E'].map((label) => {
+    const stats = stressResults?.worker_stats?.[label] || {}
+    const latency = stats?.latency_ms || {}
+    const cache = stats?.cache || {}
+    const observed = stats?.observed || {}
+    const rawHitRate = asFiniteNumber(cache?.hit_rate)
+    return {
+      label,
+      count: Number(stressResults?.worker_distribution?.[label] || 0),
+      pct: Number(stressResults?.worker_distribution_pct?.[label] || 0),
+      latencyAvg: asFiniteNumber(latency?.avg),
+      latencyP95: asFiniteNumber(latency?.p95),
+      cacheHit: Number(cache?.hit || 0),
+      cacheMiss: Number(cache?.miss || 0),
+      cacheUnknown: Number(cache?.unknown || 0),
+      cacheHitRatePct: rawHitRate === null ? null : rawHitRate * 100,
+      responseErrors: Number(stats?.response_error_count || 0),
+      queueAvg: asFiniteNumber(observed?.queue_avg),
+      reportedErrorsAvg: asFiniteNumber(observed?.reported_errors_avg),
+      reportedP95Avg: asFiniteNumber(observed?.reported_p95_ms_avg),
+      cacheWarmthAvg: asFiniteNumber(observed?.cache_warmth_avg),
+    }
+  })
   const renderRobotSvg = (idPrefix) => (
     <svg
       className="robot-svg"
@@ -1167,7 +1200,10 @@ function App() {
                       In this run, llm-d handled {stressAttempts.toLocaleString()} requests with {stressFailed.toLocaleString()} failures ({toPct(stressErrorRate)} error rate).
                     </p>
                     <p className="stress-plain">
-                      The worker split below is what this llm-d run reported for 5 workers A-E (Wondering why Worker A gets so many hits).
+                      Worker identity coverage: {formatMetric(stressIdentityCoveragePct, 2, '%')} (known {stressIdentityKnown.toLocaleString()} / missing {stressIdentityMissing.toLocaleString()}, generic {stressIdentityGeneric.toLocaleString()}).
+                    </p>
+                    <p className="stress-plain">
+                      The worker split below is what this llm-d run reported for workers A-E.
                     </p>
                     <div className="stress-worker-grid">
                       {stressWorkerDistribution.map((item) => (
@@ -1175,6 +1211,31 @@ function App() {
                           <span>Worker {item.label}</span>
                           <strong>{item.count.toLocaleString()}</strong>
                           <em>{item.pct.toFixed(2)}%</em>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="stress-worker-detail-grid">
+                      {stressWorkerDistribution.map((item) => (
+                        <div key={`detail-${item.label}`} className="stress-worker-detail-card">
+                          <div className="stress-worker-detail-title">Worker {item.label} detail</div>
+                          <div className="stress-worker-detail-line">
+                            Latency avg/p95: {formatMetric(item.latencyAvg, 2, ' ms')} / {formatMetric(item.latencyP95, 2, ' ms')}
+                          </div>
+                          <div className="stress-worker-detail-line">
+                            Cache hit/miss/unknown: {item.cacheHit.toLocaleString()} / {item.cacheMiss.toLocaleString()} / {item.cacheUnknown.toLocaleString()}
+                          </div>
+                          <div className="stress-worker-detail-line">
+                            Cache hit rate: {formatMetric(item.cacheHitRatePct, 2, '%')}
+                          </div>
+                          <div className="stress-worker-detail-line">
+                            Queue avg: {formatMetric(item.queueAvg, 2)} · Reported errors avg: {formatMetric(item.reportedErrorsAvg, 2)}
+                          </div>
+                          <div className="stress-worker-detail-line">
+                            Reported p95 avg: {formatMetric(item.reportedP95Avg, 2, ' ms')} · Cache warmth avg: {formatMetric(item.cacheWarmthAvg, 2)}
+                          </div>
+                          <div className="stress-worker-detail-line">
+                            API errors mapped to worker: {item.responseErrors.toLocaleString()}
+                          </div>
                         </div>
                       ))}
                     </div>

@@ -1,6 +1,6 @@
 import http from 'k6/http'
 import { check } from 'k6'
-import { Counter } from 'k6/metrics'
+import { Counter, Trend } from 'k6/metrics'
 
 const rate = Number(__ENV.RATE || 100)
 const duration = __ENV.DURATION || '60s'
@@ -13,13 +13,42 @@ const failureReason4xx = new Counter('failure_reason_http_4xx')
 const failureReason5xx = new Counter('failure_reason_http_5xx')
 const failureReasonNetwork = new Counter('failure_reason_network')
 const failureReasonInvalidJson = new Counter('failure_reason_invalid_json')
-const workerSelectedA = new Counter('worker_selected_a')
-const workerSelectedB = new Counter('worker_selected_b')
-const workerSelectedC = new Counter('worker_selected_c')
-const workerSelectedD = new Counter('worker_selected_d')
-const workerSelectedE = new Counter('worker_selected_e')
+const failureReasonApiError = new Counter('failure_reason_api_error')
+const workerLabels = ['A', 'B', 'C', 'D', 'E']
+const genericIdentityValues = new Set(['grpc', 'llm-d', 'sglang', 'vllm', 'vllm_http'])
+const workerSelected = {}
+const workerLatency = {}
+const workerCacheHit = {}
+const workerCacheMiss = {}
+const workerCacheUnknown = {}
+const workerResponseError = {}
+const workerQueue = {}
+const workerReportedErrors = {}
+const workerReportedP95 = {}
+const workerCacheWarmth = {}
+for (const label of workerLabels) {
+  const suffix = label.toLowerCase()
+  workerSelected[label] = new Counter(`worker_selected_${suffix}`)
+  workerLatency[label] = new Trend(`worker_latency_${suffix}`, true)
+  workerCacheHit[label] = new Counter(`worker_cache_hit_${suffix}`)
+  workerCacheMiss[label] = new Counter(`worker_cache_miss_${suffix}`)
+  workerCacheUnknown[label] = new Counter(`worker_cache_unknown_${suffix}`)
+  workerResponseError[label] = new Counter(`worker_response_error_${suffix}`)
+  workerQueue[label] = new Trend(`worker_queue_${suffix}`)
+  workerReportedErrors[label] = new Trend(`worker_reported_errors_${suffix}`)
+  workerReportedP95[label] = new Trend(`worker_reported_p95_ms_${suffix}`, true)
+  workerCacheWarmth[label] = new Trend(`worker_cache_warmth_${suffix}`)
+}
 const workerSelectedOther = new Counter('worker_selected_other')
 const workerSelectedMissing = new Counter('worker_selected_missing')
+const workerIdentityKnown = new Counter('worker_identity_known')
+const workerIdentityMissing = new Counter('worker_identity_missing')
+const workerIdentityGeneric = new Counter('worker_identity_generic')
+
+function normalizeWorkerLabel(value) {
+  const workerLabel = String(value || '').trim().toUpperCase()
+  return workerLabels.includes(workerLabel) ? workerLabel : ''
+}
 
 export const options = {
   scenarios: {
@@ -81,25 +110,56 @@ export default function () {
 
   try {
     const parsed = res.json()
+    const workerLabel = normalizeWorkerLabel(parsed?.selected_worker)
+    const workerIdentity = String(parsed?.worker_identity || '').trim()
+    if (!workerIdentity) {
+      workerIdentityMissing.add(1)
+    } else {
+      workerIdentityKnown.add(1)
+      if (genericIdentityValues.has(workerIdentity.toLowerCase())) {
+        workerIdentityGeneric.add(1)
+      }
+    }
     if (parsed && parsed.error) {
       failedRequests.add(1)
-      failureReasonInvalidJson.add(1)
+      failureReasonApiError.add(1)
+      if (workerLabel) {
+        workerResponseError[workerLabel].add(1)
+      }
       return
     }
-    const workerLabel = String(parsed?.selected_worker || '').trim().toUpperCase()
     if (!workerLabel) {
       workerSelectedMissing.add(1)
-    } else if (workerLabel === 'A') {
-      workerSelectedA.add(1)
-    } else if (workerLabel === 'B') {
-      workerSelectedB.add(1)
-    } else if (workerLabel === 'C') {
-      workerSelectedC.add(1)
-    } else if (workerLabel === 'D') {
-      workerSelectedD.add(1)
-    } else if (workerLabel === 'E') {
-      workerSelectedE.add(1)
     } else {
+      const durationMs = Number(res?.timings?.duration || 0)
+      workerSelected[workerLabel].add(1)
+      if (Number.isFinite(durationMs) && durationMs >= 0) {
+        workerLatency[workerLabel].add(durationMs)
+      }
+      if (parsed?.cache_hit === true) {
+        workerCacheHit[workerLabel].add(1)
+      } else if (parsed?.cache_hit === false) {
+        workerCacheMiss[workerLabel].add(1)
+      } else {
+        workerCacheUnknown[workerLabel].add(1)
+      }
+    }
+
+    const workerDetails = Array.isArray(parsed?.workers_detail) ? parsed.workers_detail : []
+    for (const detail of workerDetails) {
+      const detailLabel = normalizeWorkerLabel(detail?.label)
+      if (!detailLabel) continue
+      const queueLen = Number(detail?.queue)
+      const errorsSeen = Number(detail?.errors)
+      const p95Seen = Number(detail?.p95_ms)
+      const cacheWarmthSeen = Number(detail?.cache_warmth)
+      if (Number.isFinite(queueLen)) workerQueue[detailLabel].add(queueLen)
+      if (Number.isFinite(errorsSeen)) workerReportedErrors[detailLabel].add(errorsSeen)
+      if (Number.isFinite(p95Seen)) workerReportedP95[detailLabel].add(p95Seen)
+      if (Number.isFinite(cacheWarmthSeen)) workerCacheWarmth[detailLabel].add(cacheWarmthSeen)
+    }
+
+    if (workerLabel === '' && parsed?.selected_worker) {
       workerSelectedOther.add(1)
     }
   } catch (error) {

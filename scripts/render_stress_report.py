@@ -32,6 +32,44 @@ def _metric_count(metrics, metric_name, default=0):
     return int(round(_metric_value(metrics, metric_name, "count", default)))
 
 
+def _metric_stats(metrics, metric_name, fallback_count=0):
+    metric = metrics.get(metric_name)
+    if not isinstance(metric, dict):
+        return {"count": 0, "avg": None, "p95": None, "max": None}
+    values = metric.get("values")
+    if not isinstance(values, dict):
+        values = metric
+
+    def _pick(name, fallback=None):
+        raw = values.get(name, fallback)
+        if raw is None:
+            return None
+        try:
+            return float(raw)
+        except Exception:
+            return None
+
+    avg = _pick("avg")
+    p95 = _pick("p(95)", _pick("p95"))
+    max_value = _pick("max")
+    count = int(round(float(values.get("count", 0) or 0)))
+    has_signal = any(value is not None for value in (avg, p95, max_value))
+    if count <= 0 and has_signal and fallback_count > 0:
+        count = int(fallback_count)
+    if count <= 0 and not has_signal:
+        return {"count": 0, "avg": None, "p95": None, "max": None}
+    return {"count": count, "avg": avg, "p95": p95, "max": max_value}
+
+
+def _round_or_none(value, digits=3):
+    if value is None:
+        return None
+    try:
+        return round(float(value), digits)
+    except Exception:
+        return None
+
+
 def _collect_failure_reasons(metrics):
     reasons = []
     for name, metric in metrics.items():
@@ -64,6 +102,63 @@ def _collect_worker_distribution(metrics):
     }
     distribution_meta["counted"] = sum(distribution.values()) + distribution_meta["other"] + distribution_meta["missing"]
     return distribution, distribution_meta
+
+
+def _collect_worker_stats(metrics, distribution):
+    worker_stats = {}
+    for label in ("A", "B", "C", "D", "E"):
+        suffix = label.lower()
+        selected_count = int(distribution.get(label, 0))
+        latency_stats = _metric_stats(
+            metrics, f"worker_latency_{suffix}", fallback_count=selected_count
+        )
+        queue_stats = _metric_stats(
+            metrics, f"worker_queue_{suffix}", fallback_count=selected_count
+        )
+        reported_errors_stats = _metric_stats(
+            metrics, f"worker_reported_errors_{suffix}", fallback_count=selected_count
+        )
+        reported_p95_stats = _metric_stats(
+            metrics, f"worker_reported_p95_ms_{suffix}", fallback_count=selected_count
+        )
+        cache_warmth_stats = _metric_stats(
+            metrics, f"worker_cache_warmth_{suffix}", fallback_count=selected_count
+        )
+
+        cache_hit = _metric_count(metrics, f"worker_cache_hit_{suffix}", 0)
+        cache_miss = _metric_count(metrics, f"worker_cache_miss_{suffix}", 0)
+        cache_unknown = _metric_count(metrics, f"worker_cache_unknown_{suffix}", 0)
+        response_error = _metric_count(metrics, f"worker_response_error_{suffix}", 0)
+        cache_known_total = cache_hit + cache_miss
+        cache_hit_rate = (cache_hit / cache_known_total) if cache_known_total > 0 else None
+
+        worker_stats[label] = {
+            "requests": selected_count,
+            "latency_ms": {
+                "count": latency_stats["count"],
+                "avg": _round_or_none(latency_stats["avg"]),
+                "p95": _round_or_none(latency_stats["p95"]),
+                "max": _round_or_none(latency_stats["max"]),
+            },
+            "cache": {
+                "hit": cache_hit,
+                "miss": cache_miss,
+                "unknown": cache_unknown,
+                "hit_rate": _round_or_none(cache_hit_rate, 6),
+            },
+            "response_error_count": response_error,
+            "observed": {
+                "queue_avg": _round_or_none(queue_stats["avg"]),
+                "queue_p95": _round_or_none(queue_stats["p95"]),
+                "reported_errors_avg": _round_or_none(reported_errors_stats["avg"]),
+                "reported_errors_max": _round_or_none(reported_errors_stats["max"]),
+                "reported_p95_ms_avg": _round_or_none(reported_p95_stats["avg"]),
+                "reported_p95_ms_p95": _round_or_none(reported_p95_stats["p95"]),
+                "cache_warmth_avg": _round_or_none(cache_warmth_stats["avg"]),
+                "cache_warmth_p95": _round_or_none(cache_warmth_stats["p95"]),
+            },
+        }
+    return worker_stats
 
 
 def _safe_iso_delta_seconds(started_at: str, ended_at: str):
@@ -115,6 +210,47 @@ def _build_markdown(result, failure_reasons, slo):
         f"- Raw extras: other={result['worker_distribution_meta']['other']}, "
         f"missing={result['worker_distribution_meta']['missing']}, "
         f"counted={result['worker_distribution_meta']['counted']}"
+    )
+    lines.append("")
+    lines.append("## Worker Detail Signals (A-E)")
+    lines.append("")
+    lines.append(
+        "| Worker | Avg latency (ms) | p95 latency (ms) | Cache hit rate | "
+        "Queue avg | Reported errors avg | Reported p95 avg (ms) | Cache warmth avg | API errors |"
+    )
+    lines.append("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for label in ("A", "B", "C", "D", "E"):
+        stats = result["worker_stats"].get(label, {})
+        latency = stats.get("latency_ms", {})
+        cache = stats.get("cache", {})
+        observed = stats.get("observed", {})
+        hit_rate = cache.get("hit_rate")
+        hit_rate_text = f"{float(hit_rate) * 100.0:.2f}%" if hit_rate is not None else "n/a"
+        latency_avg = latency.get("avg")
+        latency_p95 = latency.get("p95")
+        queue_avg = observed.get("queue_avg")
+        err_avg = observed.get("reported_errors_avg")
+        reported_p95_avg = observed.get("reported_p95_ms_avg")
+        cache_warmth_avg = observed.get("cache_warmth_avg")
+        lines.append(
+            f"| {label} | "
+            f"{latency_avg if latency_avg is not None else 'n/a'} | "
+            f"{latency_p95 if latency_p95 is not None else 'n/a'} | "
+            f"{hit_rate_text} | "
+            f"{queue_avg if queue_avg is not None else 'n/a'} | "
+            f"{err_avg if err_avg is not None else 'n/a'} | "
+            f"{reported_p95_avg if reported_p95_avg is not None else 'n/a'} | "
+            f"{cache_warmth_avg if cache_warmth_avg is not None else 'n/a'} | "
+            f"{int(stats.get('response_error_count') or 0)} |"
+        )
+    lines.append("")
+    lines.append("## Worker Identity Coverage")
+    lines.append("")
+    lines.append(f"- identity known: {result['worker_identity']['known']}")
+    lines.append(f"- identity missing: {result['worker_identity']['missing']}")
+    lines.append(f"- identity generic: {result['worker_identity']['generic']}")
+    lines.append(
+        f"- identity coverage: {result['worker_identity']['coverage_pct']:.2f}%"
     )
     lines.append("")
     lines.append("## Pass/Fail")
@@ -190,6 +326,14 @@ def main():
 
     failure_reasons = _collect_failure_reasons(metrics)
     worker_distribution, worker_distribution_meta = _collect_worker_distribution(metrics)
+    worker_stats = _collect_worker_stats(metrics, worker_distribution)
+    worker_identity_known = _metric_count(metrics, "worker_identity_known", 0)
+    worker_identity_missing = _metric_count(metrics, "worker_identity_missing", 0)
+    worker_identity_generic = _metric_count(metrics, "worker_identity_generic", 0)
+    identity_total = worker_identity_known + worker_identity_missing
+    identity_coverage_pct = (
+        (worker_identity_known / identity_total) * 100.0 if identity_total > 0 else 0.0
+    )
     worker_total = sum(worker_distribution.values())
     worker_distribution_pct = {}
     for label, count in worker_distribution.items():
@@ -222,6 +366,13 @@ def main():
         "worker_distribution": worker_distribution,
         "worker_distribution_pct": worker_distribution_pct,
         "worker_distribution_meta": worker_distribution_meta,
+        "worker_identity": {
+            "known": int(worker_identity_known),
+            "missing": int(worker_identity_missing),
+            "generic": int(worker_identity_generic),
+            "coverage_pct": float(round(identity_coverage_pct, 4)),
+        },
+        "worker_stats": worker_stats,
     }
     result["slo"] = slo
     result["slo_pass"] = result["latency_ms"]["p95"] <= slo["p95_ms"] and result[

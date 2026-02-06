@@ -1,0 +1,323 @@
+{
+    "root_group": {
+        "checks": {
+            "submit status is 2xx": {
+                "name": "submit status is 2xx",
+                "path": "::submit status is 2xx",
+                "id": "b02de3ab8a6c2776fc1862bd4f978bab",
+                "passes": 88065,
+                "fails": 15391
+            }
+        },
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {}
+    },
+    "metrics": {
+        "http_req_duration{expected_response:true}": {
+            "max": 2019.465,
+            "p(90)": 385.5448,
+            "p(95)": 437.28779999999995,
+            "avg": 258.2694973712604,
+            "min": 39.363,
+            "med": 237.568
+        },
+        "http_req_waiting": {
+            "max": 2019.32,
+            "p(90)": 372.2695,
+            "p(95)": 425.14674999999994,
+            "avg": 219.53749086567927,
+            "min": 0,
+            "med": 218.0845
+        },
+        "worker_queue_b": {
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0
+        },
+        "worker_reported_p95_ms_c": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "worker_selected_a": {
+            "count": 88065,
+            "rate": 105.81005416422259
+        },
+        "worker_cache_unknown_a": {
+            "count": 88065,
+            "rate": 105.81005416422259
+        },
+        "http_req_sending": {
+            "avg": 0.04204644486544793,
+            "min": 0,
+            "med": 0.038,
+            "max": 3.315,
+            "p(90)": 0.065,
+            "p(95)": 0.081
+        },
+        "iteration_duration": {
+            "max": 7832.007416,
+            "p(90)": 7772.948521,
+            "p(95)": 7774.24621925,
+            "avg": 1624.7615999657485,
+            "min": 68.483625,
+            "med": 352.1131875
+        },
+        "worker_queue_c": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        },
+        "worker_reported_errors_c": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0
+        },
+        "worker_reported_errors_d": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "worker_cache_warmth_d": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0
+        },
+        "worker_queue_d": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        },
+        "worker_reported_p95_ms_a": {
+            "p(95)": 478,
+            "avg": 478,
+            "min": 478,
+            "med": 478,
+            "max": 478,
+            "p(90)": 478
+        },
+        "http_req_receiving": {
+            "avg": 0.26757920275286134,
+            "min": 0,
+            "med": 0.052,
+            "max": 52.207,
+            "p(90)": 0.212,
+            "p(95)": 0.811
+        },
+        "worker_identity_missing": {
+            "count": 88065,
+            "rate": 105.81005416422259
+        },
+        "worker_latency_a": {
+            "avg": 258.2694973712604,
+            "min": 39.363,
+            "med": 237.568,
+            "max": 2019.465,
+            "p(90)": 385.5448,
+            "p(95)": 437.28779999999995
+        },
+        "worker_reported_p95_ms_d": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "worker_reported_errors_e": {
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0
+        },
+        "worker_cache_warmth_c": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "iterations": {
+            "count": 103456,
+            "rate": 124.30233309048785
+        },
+        "http_req_failed": {
+            "fails": 88065,
+            "passes": 15391,
+            "value": 0.14876855861429014
+        },
+        "worker_cache_warmth_b": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "worker_reported_errors_a": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "checks": {
+            "passes": 88065,
+            "fails": 15391,
+            "value": 0.8512314413857098
+        },
+        "worker_cache_warmth_a": {
+            "avg": 60,
+            "min": 60,
+            "med": 60,
+            "max": 60,
+            "p(90)": 60,
+            "p(95)": 60
+        },
+        "data_received": {
+            "count": 116797013,
+            "rate": 140331.5536450282
+        },
+        "successful_requests": {
+            "count": 88065,
+            "rate": 105.81005416422259
+        },
+        "worker_reported_errors_b": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        },
+        "http_req_blocked": {
+            "med": 31.096,
+            "max": 5859.332,
+            "p(90)": 332.209,
+            "p(95)": 1052.91725,
+            "avg": 248.1447066965654,
+            "min": 0
+        },
+        "failure_reason_network": {
+            "count": 15391,
+            "rate": 18.492278926265257
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "worker_reported_p95_ms_b": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0
+        },
+        "http_req_duration": {
+            "max": 2019.465,
+            "p(90)": 372.7565000000001,
+            "p(95)": 425.4765,
+            "avg": 219.8471165133008,
+            "min": 0,
+            "med": 218.554
+        },
+        "vus_max": {
+            "value": 439,
+            "min": 150,
+            "max": 439
+        },
+        "http_reqs": {
+            "count": 103456,
+            "rate": 124.30233309048785
+        },
+        "dropped_iterations": {
+            "count": 294,
+            "rate": 0.3532408553259688
+        },
+        "http_req_connecting": {
+            "max": 5859.186,
+            "p(90)": 332.15950000000004,
+            "p(95)": 1052.87275,
+            "avg": 248.10003892476263,
+            "min": 0,
+            "med": 31.039
+        },
+        "vus": {
+            "value": 10,
+            "min": 10,
+            "max": 429
+        },
+        "failed_requests": {
+            "count": 15391,
+            "rate": 18.492278926265257
+        },
+        "worker_cache_warmth_e": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        },
+        "worker_reported_p95_ms_e": {
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0
+        },
+        "worker_queue_a": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        },
+        "data_sent": {
+            "rate": 30821.050407868952,
+            "count": 25652154
+        },
+        "worker_queue_e": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        }
+    }
+}

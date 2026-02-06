@@ -7,6 +7,8 @@ API_HOST="${API_HOST:-127.0.0.1}"
 API_PORT="${API_PORT:-8000}"
 UI_PORT="${UI_PORT:-5173}"
 MODEL_NAME="${MODEL_NAME:-fake-model}"
+SGLANG_HTTP_URL="${SGLANG_HTTP_URL:-http://127.0.0.1:30000}"
+ENABLE_SGLANG_FRONT="${ENABLE_SGLANG_FRONT:-1}"
 
 KIND_CLUSTER="${KIND_CLUSTER:-llm-d-sim}"
 LLMD_NAMESPACE="${LLMD_NAMESPACE:-llm-d}"
@@ -181,6 +183,7 @@ YAML
 start_api() {
   DEFAULT_BACKEND="${1}" ENABLE_LLMD_LOCAL="${2:-}" LLMD_HTTP_URL="${3:-}" \
     DISABLE_GRPC="${4:-}" GRPC_TARGET="${5:-}" \
+    ENABLE_SGLANG_FRONT="${6:-}" SGLANG_HTTP_URL="${7:-}" \
     MODEL_NAME="${MODEL_NAME}" API_HOST="${API_HOST}" API_PORT="${API_PORT}" \
     "${ROOT}/.venv/bin/python" "${ROOT}/app.py" > /tmp/ict_api.log 2>&1 &
   API_PID=$!
@@ -200,6 +203,19 @@ start_ui() {
     VITE_DISABLE_GRPC="${VITE_DISABLE_GRPC:-}" \
     VITE_LOCK_MODE="${VITE_LOCK_MODE:-}" \
     npm run dev -- --port "${UI_PORT}")
+}
+
+warn_if_sglang_unreachable() {
+  local url="${1}"
+  if need_cmd curl && curl --silent --show-error --max-time 2 "${url}/health" >/dev/null 2>&1; then
+    return 0
+  fi
+  if need_cmd curl && curl --silent --show-error --max-time 2 "${url}/v1/models" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "SGLang endpoint appears unreachable at ${url}" >&2
+  echo "Start SGLang locally and keep it running, for example:" >&2
+  echo "  python -m sglang.launch_server --host 127.0.0.1 --port 30000 --model-path <model>" >&2
 }
 
 cleanup() {
@@ -234,13 +250,16 @@ case "${MODE}" in
       > /tmp/ict_llmd_pf.log 2>&1 &
     PF_PID=$!
     sleep 2
+    if [[ "${ENABLE_SGLANG_FRONT}" == "1" || "${ENABLE_SGLANG_FRONT}" == "true" || "${ENABLE_SGLANG_FRONT}" == "yes" ]]; then
+      warn_if_sglang_unreachable "${SGLANG_HTTP_URL%/}"
+    fi
     start_grpc
     GRPC_TARGET="${GRPC_HOST}:${GRPC_PORT}"
-    start_api "SIM" "1" "http://localhost:${LLMD_LOCAL_PORT}" "0" "${GRPC_TARGET}"
+    start_api "SIM" "1" "http://localhost:${LLMD_LOCAL_PORT}" "0" "${GRPC_TARGET}" "${ENABLE_SGLANG_FRONT}" "${SGLANG_HTTP_URL}"
     VITE_ENABLE_LLMD=1 VITE_DISABLE_GRPC=0 start_ui "SIM"
     ;;
   SIM)
-    start_api "SIM" "" "" "1"
+    start_api "SIM" "" "" "1" "" "0" ""
     VITE_DISABLE_GRPC=1 VITE_ENABLE_LLMD=0 start_ui "SIM"
     ;;
   GRPC)
@@ -252,7 +271,7 @@ case "${MODE}" in
     done
     start_grpc
     GRPC_TARGET="${GRPC_HOST}:${GRPC_PORT}"
-    start_api "GRPC" "" "" "0" "${GRPC_TARGET}"
+    start_api "GRPC" "" "" "0" "${GRPC_TARGET}" "0" ""
     VITE_DISABLE_GRPC=0 VITE_ENABLE_LLMD=0 VITE_LOCK_MODE=1 start_ui "GRPC"
     ;;
   LLMD)
@@ -267,7 +286,10 @@ case "${MODE}" in
       > /tmp/ict_llmd_pf.log 2>&1 &
     PF_PID=$!
     sleep 2
-    start_api "LLMD" "1" "http://localhost:${LLMD_LOCAL_PORT}" "0"
+    if [[ "${ENABLE_SGLANG_FRONT}" == "1" || "${ENABLE_SGLANG_FRONT}" == "true" || "${ENABLE_SGLANG_FRONT}" == "yes" ]]; then
+      warn_if_sglang_unreachable "${SGLANG_HTTP_URL%/}"
+    fi
+    start_api "LLMD" "1" "http://localhost:${LLMD_LOCAL_PORT}" "0" "" "${ENABLE_SGLANG_FRONT}" "${SGLANG_HTTP_URL}"
     VITE_DISABLE_GRPC=0 VITE_ENABLE_LLMD=1 VITE_LOCK_MODE=1 start_ui "LLMD"
     ;;
   *)

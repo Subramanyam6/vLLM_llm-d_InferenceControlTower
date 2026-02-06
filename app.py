@@ -1,3 +1,4 @@
+import hashlib
 import json
 import mimetypes
 import os
@@ -29,6 +30,9 @@ _STATIC_DIR = os.path.abspath(
 )
 _STATIC_INDEX = os.path.join(_STATIC_DIR, "index.html")
 _HAVE_STATIC = os.path.isfile(_STATIC_INDEX)
+_REPORTS_LOAD_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "reports", "load")
+)
 
 
 def _detect_mesh_replicas(default_replicas):
@@ -75,15 +79,34 @@ _STATE = {
 
 
 def _normalize_backend(backend):
-    if _DISABLE_GRPC and backend in ("GRPC", "gRPC"):
+    backend_raw = str(backend or "").strip()
+    backend_upper = backend_raw.upper()
+
+    if backend_raw == "Light-weight Demo" or backend_upper == "SIM":
+        next_backend = "SIM"
+    elif backend_upper in ("LLMD", "SGLANG") or backend_raw in (
+        "llm-d (local)",
+        "sglang (local)",
+    ):
+        next_backend = "LLMD"
+    elif backend_upper == "GRPC" or backend_raw in ("gRPC", "gRPC (local)"):
+        next_backend = "GRPC"
+    else:
+        next_backend = "GRPC"
+
+    if _DISABLE_GRPC and next_backend == "GRPC":
         return "SIM"
-    if backend in ("Light-weight Demo", "SIM"):
+    if next_backend == "LLMD" and not _ENABLE_LLMD:
         return "SIM"
-    if backend == "LLMD" and not _ENABLE_LLMD:
-        return "SIM"
-    if backend == "LLMD":
-        return "LLMD"
-    return "GRPC"
+    return next_backend
+
+
+def _mode_label(backend_value):
+    if backend_value == "SIM":
+        return "Light-weight Demo"
+    if backend_value == "LLMD":
+        return "llm-d (local)"
+    return "gRPC (local)"
 
 
 _STATE["backend"] = _normalize_backend(_STATE["backend"])
@@ -162,6 +185,47 @@ def _worker_label(idx):
     return chr(ord("A") + idx) if idx < 26 else str(idx + 1)
 
 
+def _worker_label_from_identity(identity, scale):
+    scale = max(1, int(scale))
+    digest = hashlib.md5(identity.encode("utf-8")).hexdigest()
+    idx = int(digest[:8], 16) % scale
+    return _worker_label(idx)
+
+
+def _extract_worker_identity_from_result(result):
+    reason = result.get("reason") or {}
+    worker_identity = str(reason.get("worker_identity") or "").strip()
+    if worker_identity:
+        return worker_identity
+    worker_id = result.get("worker_id")
+    if isinstance(worker_id, str):
+        value = worker_id.strip()
+        if value:
+            return value
+    return ""
+
+
+def _resolve_selected_worker(result, backend_value, scale):
+    worker_id = result.get("worker_id")
+    if isinstance(worker_id, int):
+        return _worker_label(worker_id % max(1, int(scale)))
+    if isinstance(worker_id, str) and worker_id.isdigit():
+        return _worker_label(int(worker_id) % max(1, int(scale)))
+
+    if backend_value == "SIM":
+        return _worker_label(0)
+
+    worker_identity = _extract_worker_identity_from_result(result)
+    if not worker_identity:
+        return None
+
+    # Generic markers mean upstream identity is still unknown.
+    if worker_identity.lower() in {"grpc", "llm-d", "sglang", "vllm", "vllm_http"}:
+        return None
+
+    return _worker_label_from_identity(worker_identity, scale)
+
+
 def _worker_status(worker):
     if worker["health"] != "UP":
         return "DOWN"
@@ -222,11 +286,7 @@ def _build_state_payload(selected_id=0):
     worker = snapshot[selected_id] if snapshot and selected_id < len(snapshot) else None
     return {
         "backend": _STATE["backend"],
-        "mode": (
-            "Light-weight Demo"
-            if _STATE["backend"] == "SIM"
-            else ("llm-d (local)" if _STATE["backend"] == "LLMD" else "gRPC (local)")
-        ),
+        "mode": _mode_label(_STATE["backend"]),
         "scale": _STATE["scale"],
         "scale_status": _STATE["scale_status"],
         "scale_error": _STATE["scale_error"],
@@ -241,10 +301,38 @@ def _build_state_payload(selected_id=0):
     }
 
 
+def _load_latest_stress_report():
+    try:
+        if not os.path.isdir(_REPORTS_LOAD_DIR):
+            return None
+        run_ids = sorted(
+            [
+                run_id
+                for run_id in os.listdir(_REPORTS_LOAD_DIR)
+                if os.path.isdir(os.path.join(_REPORTS_LOAD_DIR, run_id))
+            ],
+            reverse=True,
+        )
+        for run_id in run_ids:
+            results_path = os.path.join(_REPORTS_LOAD_DIR, run_id, "results.json")
+            if not os.path.isfile(results_path):
+                continue
+            with open(results_path, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            payload["run_id"] = run_id
+            payload["source_file"] = os.path.relpath(
+                results_path, os.path.dirname(__file__)
+            )
+            return payload
+    except Exception:
+        return None
+    return None
+
+
 def _apply_state(payload):
     backend = payload.get("backend", _STATE["backend"])
     backend_value = _normalize_backend(backend)
-    scale = payload.get("scale", _STATE["scale"])
+    scale_raw = payload.get("scale", _STATE["scale"])
     routing_mode = payload.get("routing_mode", _STATE["routing_mode"])
     kill_worker = bool(payload.get("kill_worker", _STATE["kill_worker"]))
     delay_s = float(payload.get("delay_s", _STATE["delay_s"]) or 0.0)
@@ -255,7 +343,21 @@ def _apply_state(payload):
     if routing_mode not in ("least_queue", "cache_aware", "round_robin"):
         routing_mode = _STATE["routing_mode"]
 
-    scale, scale_status, scale_error = _scale_workers(scale, backend_value)
+    try:
+        requested_scale = max(1, int(scale_raw))
+    except Exception:
+        requested_scale = int(_STATE["scale"])
+
+    should_rescale = (
+        backend_value != _STATE["backend"] or requested_scale != int(_STATE["scale"])
+    )
+    if should_rescale:
+        scale, scale_status, scale_error = _scale_workers(requested_scale, backend_value)
+    else:
+        scale = int(_STATE["scale"])
+        scale_status = _STATE["scale_status"]
+        scale_error = _STATE["scale_error"]
+
     gateway.set_worker_count(scale)
     gateway.set_chaos(delay_s, error_rate)
     gateway.apply_kill(0 if kill_worker else None)
@@ -292,22 +394,19 @@ def _handle_request(payload):
     )
 
     status = "OK" if result["error"] is None else "ERROR"
-    selected_mode = (
-        "Light-weight Demo"
-        if backend_value == "SIM"
-        else ("llm-d (local)" if backend_value == "LLMD" else "gRPC (local)")
-    )
+    selected_mode = _mode_label(backend_value)
     snapshot = gateway.snapshot()
-    display_worker = 0
-    if isinstance(result["worker_id"], int):
-        display_worker = result["worker_id"]
-    elif isinstance(result["worker_id"], str) and result["worker_id"].isdigit():
-        display_worker = int(result["worker_id"])
+    selected_worker_label = _resolve_selected_worker(result, backend_value, _STATE["scale"])
 
-    worker = (
-        snapshot[display_worker] if snapshot and display_worker < len(snapshot) else None
-    )
+    display_worker = 0
+    if isinstance(selected_worker_label, str) and len(selected_worker_label) == 1:
+        maybe_idx = ord(selected_worker_label.upper()) - ord("A")
+        if 0 <= maybe_idx < len(snapshot):
+            display_worker = maybe_idx
+
+    worker = snapshot[display_worker] if snapshot and display_worker < len(snapshot) else None
     why = _build_why(worker, result.get("reason"))
+    worker_identity = _extract_worker_identity_from_result(result) or None
 
     return {
         "text": result["text"],
@@ -320,7 +419,8 @@ def _handle_request(payload):
         "error": result["error"],
         "scale_status": _STATE["scale_status"],
         "scale_error": _STATE["scale_error"],
-        "selected_worker": _worker_label(display_worker),
+        "selected_worker": selected_worker_label,
+        "worker_identity": worker_identity,
         "why": why,
         "workers_detail": _build_workers_payload(snapshot),
     }
@@ -371,6 +471,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             body = json.dumps(_build_state_payload()).encode("utf-8")
             self._send_bytes(body, 200, "application/json")
+            return
+        if path == "/api/stress/latest":
+            report = _load_latest_stress_report()
+            if report is None:
+                body = json.dumps({"error": "no_stress_report_found"}).encode("utf-8")
+                self._send_bytes(body, 404, "application/json")
+            else:
+                body = json.dumps(report).encode("utf-8")
+                self._send_bytes(body, 200, "application/json")
             return
         if self._serve_static(path):
             return

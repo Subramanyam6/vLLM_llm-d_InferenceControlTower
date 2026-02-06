@@ -1,0 +1,23 @@
+{
+  "smoke": {
+    "target_requests": 100000,
+    "vus": 60,
+    "rate": 200,
+    "duration": "500s",
+    "max_vus": 180
+  },
+  "standard": {
+    "target_requests": 1000000,
+    "vus": 250,
+    "rate": 1000,
+    "duration": "1000s",
+    "max_vus": 750
+  },
+  "endurance": {
+    "target_requests": 5000000,
+    "vus": 500,
+    "rate": 2500,
+    "duration": "2000s",
+    "max_vus": 1500
+  }
+}

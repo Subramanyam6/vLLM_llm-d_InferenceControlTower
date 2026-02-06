@@ -1,6 +1,8 @@
 import argparse
 import json
+import os
 import random
+import socket
 import time
 from concurrent import futures
 
@@ -26,6 +28,12 @@ class InferenceService:
         self.base_delay_s = float(base_delay_s)
         self.jitter_s = float(jitter_s)
         self.error_rate = float(error_rate)
+        self.worker_identity = (
+            os.getenv("GRPC_WORKER_ID")
+            or os.getenv("HOSTNAME")
+            or socket.gethostname()
+            or "grpc-local"
+        )
 
     def generate(self, request, context):
         prompt = str(request.get("prompt") or "").strip()
@@ -50,6 +58,7 @@ class InferenceService:
             ),
             "model": model,
             "transport": "grpc_http2",
+            "worker_identity": self.worker_identity,
         }
 
 

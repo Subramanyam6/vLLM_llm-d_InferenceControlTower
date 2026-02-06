@@ -1,0 +1,48 @@
+{
+  "profile": "smoke",
+  "target_requests": 50000,
+  "requests_attempted": 50000,
+  "requests_succeeded": 49995,
+  "requests_failed": 5,
+  "error_rate": 0.0001,
+  "latency_ms": {
+    "p50": 53.053,
+    "p95": 186.018,
+    "p99": 785.075
+  },
+  "throughput_rps": 99.99237,
+  "backend_mode": "LLMD",
+  "target_url": "http://127.0.0.1:8000/api/submit",
+  "started_at": "2026-02-06T17:50:15Z",
+  "ended_at": "2026-02-06T17:58:36Z",
+  "failure_reasons": [
+    {
+      "reason": "network",
+      "count": 5
+    }
+  ],
+  "worker_distribution": {
+    "A": 49995,
+    "B": 0,
+    "C": 0,
+    "D": 0,
+    "E": 0
+  },
+  "worker_distribution_pct": {
+    "A": 100.0,
+    "B": 0.0,
+    "C": 0.0,
+    "D": 0.0,
+    "E": 0.0
+  },
+  "worker_distribution_meta": {
+    "other": 0,
+    "missing": 0,
+    "counted": 49995
+  },
+  "slo": {
+    "p95_ms": 2000.0,
+    "error_rate_max": 0.02
+  },
+  "slo_pass": true
+}

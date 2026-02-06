@@ -1,12 +1,17 @@
+import io
+import json
 import os
 import socket
 import subprocess
 import sys
 import time
 import unittest
+import urllib.error
+from unittest import mock
 
 from core import (
     Gateway,
+    _extract_worker_identity,
     _fingerprint,
     _parse_grpc_response,
     format_trace,
@@ -43,6 +48,89 @@ class CoreTests(unittest.TestCase):
         out = format_trace(trace)
         self.assertIn("received", out)
         self.assertIn("responded", out)
+
+    def test_extract_worker_identity_body_and_headers(self):
+        identity = _extract_worker_identity(
+            {"worker_identity": "pod-a"},
+            {"x-upstream-host": "10.0.0.5:8000"},
+        )
+        self.assertEqual(identity, "pod-a")
+        header_only = _extract_worker_identity(
+            {},
+            {"x-upstream-host": "10.0.0.6:8000"},
+        )
+        self.assertEqual(header_only, "10.0.0.6:8000")
+
+    def test_sglang_handler_success(self):
+        gw = Gateway(worker_count=1, rate_limit_per_min=1000, retries=0)
+        rewrite_payload = {
+            "choices": [{"message": {"role": "assistant", "content": "rewritten prompt"}}]
+        }
+        llmd_payload = {
+            "choices": [{"message": {"role": "assistant", "content": "llmd final"}}]
+        }
+
+        class FakeHeaders:
+            def __init__(self, data):
+                self._data = data
+
+            def items(self):
+                return self._data.items()
+
+        class FakeResponse:
+            def __init__(self, payload, headers=None):
+                self._payload = payload
+                self.headers = FakeHeaders(headers or {})
+
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, exc_type, exc, tb):
+                return False
+
+            def read(self_inner):
+                return json.dumps(self_inner._payload).encode("utf-8")
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "SGLANG_HTTP_URL": "http://127.0.0.1:30000",
+                "LLMD_HTTP_URL": "http://127.0.0.1:8000",
+            },
+        ):
+            with mock.patch(
+                "urllib.request.urlopen",
+                side_effect=[
+                    FakeResponse(rewrite_payload, {"x-worker-id": "pod-sglang-1"}),
+                    FakeResponse(llmd_payload, {"x-worker-id": "pod-llmd-1"}),
+                ],
+            ):
+                res = gw.handle("hello sglang", "SGLANG", "round_robin")
+
+        self.assertIsNone(res["error"])
+        self.assertEqual(res["worker_id"], "pod-llmd-1")
+        self.assertEqual(res["reason"]["mode"], "llm-d+sglang")
+        self.assertEqual(res["reason"]["sglang_identity"], "pod-sglang-1")
+        self.assertEqual(res["text"], "llmd final")
+
+    def test_sglang_handler_http_error_includes_body(self):
+        gw = Gateway(worker_count=1, rate_limit_per_min=1000, retries=0)
+        err = urllib.error.HTTPError(
+            url="http://127.0.0.1:30000/v1/chat/completions",
+            code=503,
+            msg="service unavailable",
+            hdrs=None,
+            fp=io.BytesIO(b"upstream overloaded"),
+        )
+
+        with mock.patch.dict(os.environ, {"SGLANG_HTTP_URL": "http://127.0.0.1:30000"}):
+            with mock.patch("urllib.request.urlopen", side_effect=err):
+                res = gw.handle("hello sglang", "SGLANG", "round_robin")
+
+        self.assertIsNotNone(res["error"])
+        self.assertIn("sglang_front_error", res["error"])
+        self.assertIn("503", res["error"])
+        self.assertIn("upstream overloaded", res["error"])
 
 
 class GrpcIntegrationTests(unittest.TestCase):

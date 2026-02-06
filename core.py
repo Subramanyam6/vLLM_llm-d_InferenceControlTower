@@ -65,6 +65,13 @@ def _fake_llm(prompt, total_delay_s):
     return " ".join(out) + f" (prompt='{prompt[:48]}')"
 
 
+def _env_truthy(name, default=False):
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
 class Task:
     def __init__(self, prompt, fingerprint, request_id):
         self.prompt = prompt
@@ -220,7 +227,34 @@ class Gateway:
                 or os.getenv("LLMD_GATEWAY_URL")
                 or "http://localhost:8000"
             )
+            sglang_front_enabled = _env_truthy("ENABLE_SGLANG_FRONT", False)
+            if sglang_front_enabled:
+                sglang_url = os.getenv("SGLANG_HTTP_URL") or "http://127.0.0.1:30000"
+                return self._handle_llmd_via_sglang(
+                    prompt,
+                    request_id,
+                    trace,
+                    t0,
+                    llmd_url,
+                    sglang_url,
+                )
             return self._handle_llmd_http(prompt, request_id, trace, t0, llmd_url)
+        if backend == "SGLANG":
+            llmd_url = (
+                os.getenv("LLMD_HTTP_URL")
+                or os.getenv("LLM_D_HTTP_URL")
+                or os.getenv("LLMD_GATEWAY_URL")
+                or "http://localhost:8000"
+            )
+            sglang_url = os.getenv("SGLANG_HTTP_URL") or "http://127.0.0.1:30000"
+            return self._handle_llmd_via_sglang(
+                prompt,
+                request_id,
+                trace,
+                t0,
+                llmd_url,
+                sglang_url,
+            )
 
         return self._handle_sim(prompt, request_id, trace, t0, routing_mode)
 
@@ -285,17 +319,24 @@ class Gateway:
             est_ms = 250.0 * (0.4 if cache_hit else 1.0) + queue_len * 80.0
             return est_ms, cache_hit, queue_len
 
-        if routing_mode == "round_robin":
-            alive = candidates
-            idx = self.rr_index % len(alive)
+        def pick_with_round_robin(pool):
+            idx = self.rr_index % len(pool)
             self.rr_index += 1
-            w = alive[idx]
+            return pool[idx]
+
+        if routing_mode == "round_robin":
+            w = pick_with_round_robin(candidates)
             est_ms, cache_hit, queue_len = score(w)
         elif routing_mode == "least_queue":
-            w = min(candidates, key=lambda x: x.queue_len())
+            min_queue = min(w.queue_len() for w in candidates)
+            tied = [w for w in candidates if w.queue_len() == min_queue]
+            w = pick_with_round_robin(tied)
             est_ms, cache_hit, queue_len = score(w)
         else:  # cache_aware
-            w = min(candidates, key=lambda x: score(x)[0])
+            scored = [(w, *score(w)) for w in candidates]
+            min_est = min(s[1] for s in scored)
+            tied = [s[0] for s in scored if s[1] == min_est]
+            w = pick_with_round_robin(tied)
             est_ms, cache_hit, queue_len = score(w)
 
         reason = {
@@ -344,17 +385,21 @@ class Gateway:
                 )
                 data = method(payload, timeout=self.timeout_s)
             text = _parse_grpc_response(data)
+            worker_identity = _extract_worker_identity(data)
             latency_ms = (time.time() - t0) * 1000.0
             trace.append((time.time(), "responded"))
+            reason = {"mode": "grpc", "target": target}
+            if worker_identity:
+                reason["worker_identity"] = worker_identity
             return {
                 "request_id": request_id,
                 "text": text,
                 "error": None,
-                "worker_id": "grpc",
+                "worker_id": worker_identity or "grpc",
                 "cache_hit": None,
                 "latency_ms": latency_ms,
                 "trace": trace,
-                "reason": {"mode": "grpc", "target": target},
+                "reason": reason,
             }
         except Exception as e:
             trace.append((time.time(), "grpc_error"))
@@ -392,19 +437,25 @@ class Gateway:
         try:
             with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
                 data = resp.read().decode("utf-8")
+                header_obj = getattr(resp, "headers", None)
+                headers = {k: v for k, v in header_obj.items()} if hasattr(header_obj, "items") else {}
             parsed = json.loads(data)
             text = _parse_openai_response(parsed)
+            worker_identity = _extract_worker_identity(parsed, headers)
             latency_ms = (time.time() - t0) * 1000.0
             trace.append((time.time(), "responded"))
+            reason = {"mode": "vllm_http", "url": url}
+            if worker_identity:
+                reason["worker_identity"] = worker_identity
             return {
                 "request_id": request_id,
                 "text": text,
                 "error": None,
-                "worker_id": "vllm",
+                "worker_id": worker_identity or "vllm",
                 "cache_hit": None,
                 "latency_ms": latency_ms,
                 "trace": trace,
-                "reason": {"mode": "vllm_http", "url": url},
+                "reason": reason,
             }
         except urllib.error.HTTPError as e:
             body = ""
@@ -429,6 +480,137 @@ class Gateway:
                 t0,
                 {"mode": "vllm_http", "url": url},
             )
+
+    def _rewrite_prompt_with_sglang(self, prompt, request_id, trace, t0, sglang_url):
+        model_name = (
+            os.getenv("MODEL_NAME")
+            or os.getenv("SGLANG_MODEL")
+            or os.getenv("MODEL")
+            or "default"
+        )
+        base_url = sglang_url.rstrip("/")
+        if "/v1/" in base_url:
+            url = base_url
+        else:
+            url = base_url + "/v1/chat/completions"
+
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Rewrite the user prompt into a concise, clear instruction for downstream inference. "
+                        "Preserve intent, entities, constraints, and safety context. "
+                        "Return only the rewritten prompt text."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": 256,
+            "temperature": 0.0,
+        }
+        trace.append((time.time(), "sglang_front_request"))
+        _otel_event(self._otel_tracer, "sglang_front_request", {"url": url})
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                data = resp.read().decode("utf-8")
+                header_obj = getattr(resp, "headers", None)
+                headers = {k: v for k, v in header_obj.items()} if hasattr(header_obj, "items") else {}
+            parsed = json.loads(data)
+            rewritten_prompt = _parse_openai_response(parsed).strip() or prompt
+            worker_identity = _extract_worker_identity(parsed, headers)
+            trace.append((time.time(), "sglang_front_responded"))
+            return {
+                "prompt": rewritten_prompt,
+                "worker_identity": worker_identity,
+                "error": None,
+                "url": url,
+            }
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8")
+            except Exception:
+                body = ""
+            trace.append((time.time(), "sglang_front_error"))
+            return {
+                "prompt": prompt,
+                "worker_identity": "",
+                "error": f"sglang_front_error: {e.code} {body}".strip(),
+                "url": url,
+            }
+        except Exception as e:
+            trace.append((time.time(), "sglang_front_error"))
+            return {
+                "prompt": prompt,
+                "worker_identity": "",
+                "error": f"sglang_front_error: {e}",
+                "url": url,
+            }
+
+    def _handle_llmd_via_sglang(
+        self,
+        prompt,
+        request_id,
+        trace,
+        t0,
+        llmd_url,
+        sglang_url,
+    ):
+        rewritten = self._rewrite_prompt_with_sglang(
+            prompt,
+            request_id,
+            trace,
+            t0,
+            sglang_url,
+        )
+        if rewritten.get("error"):
+            return _result_error(
+                request_id,
+                rewritten["error"],
+                trace,
+                t0,
+                {
+                    "mode": "llm-d+sglang",
+                    "llmd_url": llmd_url,
+                    "sglang_url": rewritten.get("url") or sglang_url,
+                },
+            )
+
+        llmd_result = self._handle_llmd_http(
+            rewritten["prompt"],
+            request_id,
+            trace,
+            t0,
+            llmd_url,
+        )
+        reason = llmd_result.get("reason") or {}
+        reason.update(
+            {
+                "mode": "llm-d+sglang",
+                "llmd_url": llmd_url,
+                "sglang_url": rewritten.get("url") or sglang_url,
+            }
+        )
+        if rewritten["prompt"] != prompt:
+            reason["sglang_rewrote_prompt"] = 1
+        if rewritten.get("worker_identity"):
+            reason["sglang_identity"] = rewritten["worker_identity"]
+        if llmd_result.get("error") is None and _looks_generic_identity(
+            llmd_result.get("worker_id")
+        ):
+            if rewritten.get("worker_identity"):
+                llmd_result["worker_id"] = rewritten["worker_identity"]
+        llmd_result["reason"] = reason
+        return llmd_result
 
     def _handle_llmd_http(self, prompt, request_id, trace, t0, base_url):
         model_name = (
@@ -460,19 +642,25 @@ class Gateway:
         try:
             with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
                 data = resp.read().decode("utf-8")
+                header_obj = getattr(resp, "headers", None)
+                headers = {k: v for k, v in header_obj.items()} if hasattr(header_obj, "items") else {}
             parsed = json.loads(data)
             text = _parse_openai_response(parsed)
+            worker_identity = _extract_worker_identity(parsed, headers)
             latency_ms = (time.time() - t0) * 1000.0
             trace.append((time.time(), "responded"))
+            reason = {"mode": "llm-d", "url": url}
+            if worker_identity:
+                reason["worker_identity"] = worker_identity
             return {
                 "request_id": request_id,
                 "text": text,
                 "error": None,
-                "worker_id": "llm-d",
+                "worker_id": worker_identity or "llm-d",
                 "cache_hit": None,
                 "latency_ms": latency_ms,
                 "trace": trace,
-                "reason": {"mode": "llm-d", "url": url},
+                "reason": reason,
             }
         except urllib.error.HTTPError as e:
             body = ""
@@ -498,12 +686,144 @@ class Gateway:
                 {"mode": "llm-d", "url": url},
             )
 
+    def _handle_sglang_http(self, prompt, request_id, trace, t0, base_url):
+        model_name = (
+            os.getenv("MODEL_NAME")
+            or os.getenv("SGLANG_MODEL")
+            or os.getenv("MODEL")
+            or "default"
+        )
+        base_url = base_url.rstrip("/")
+        if "/v1/" in base_url:
+            url = base_url
+        else:
+            url = base_url + "/v1/chat/completions"
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 128,
+            "temperature": 0.2,
+        }
+        trace.append((time.time(), "sglang_http_request"))
+        _otel_event(self._otel_tracer, "sglang_http_request", {"url": url})
+
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                data = resp.read().decode("utf-8")
+                header_obj = getattr(resp, "headers", None)
+                headers = {k: v for k, v in header_obj.items()} if hasattr(header_obj, "items") else {}
+            parsed = json.loads(data)
+            text = _parse_openai_response(parsed)
+            worker_identity = _extract_worker_identity(parsed, headers)
+            latency_ms = (time.time() - t0) * 1000.0
+            trace.append((time.time(), "responded"))
+            reason = {"mode": "sglang", "url": url}
+            if worker_identity:
+                reason["worker_identity"] = worker_identity
+            return {
+                "request_id": request_id,
+                "text": text,
+                "error": None,
+                "worker_id": worker_identity or "sglang",
+                "cache_hit": None,
+                "latency_ms": latency_ms,
+                "trace": trace,
+                "reason": reason,
+            }
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8")
+            except Exception:
+                body = ""
+            trace.append((time.time(), "sglang_http_error"))
+            return _result_error(
+                request_id,
+                f"sglang_http_error: {e.code} {body}".strip(),
+                trace,
+                t0,
+                {"mode": "sglang", "url": url},
+            )
+        except Exception as e:
+            trace.append((time.time(), "sglang_http_error"))
+            return _result_error(
+                request_id,
+                f"sglang_http_error: {e}",
+                trace,
+                t0,
+                {"mode": "sglang", "url": url},
+            )
+
 def _parse_grpc_response(data):
     if isinstance(data, dict):
         for key in ("text", "response", "output"):
             if data.get(key):
                 return str(data[key])
     return str(data)
+
+
+def _extract_worker_identity(data=None, headers=None):
+    candidates = []
+    if isinstance(data, dict):
+        for key in (
+            "worker_identity",
+            "worker_id",
+            "worker",
+            "worker_name",
+            "pod",
+            "pod_name",
+            "hostname",
+            "instance",
+            "replica",
+            "served_by",
+            "backend_id",
+        ):
+            value = data.get(key)
+            if value:
+                candidates.append(value)
+
+    if headers:
+        normalized = {str(k).lower(): v for k, v in headers.items()}
+        for key in (
+            "x-worker-identity",
+            "x-worker-id",
+            "x-worker",
+            "x-pod-name",
+            "x-pod",
+            "x-hostname",
+            "x-instance-id",
+            "x-served-by",
+            "x-upstream-host",
+        ):
+            value = normalized.get(key)
+            if value:
+                candidates.append(value)
+
+    for candidate in candidates:
+        value = str(candidate).strip()
+        if not value:
+            continue
+        # Header can contain comma-separated values; prefer first concrete token.
+        if "," in value:
+            value = value.split(",", 1)[0].strip()
+        if value:
+            return value[:120]
+    return ""
+
+
+def _looks_generic_identity(worker_id):
+    if worker_id is None:
+        return True
+    value = str(worker_id).strip().lower()
+    if not value:
+        return True
+    return value in {"grpc", "llm-d", "sglang", "vllm", "vllm_http"}
 
 
 def _parse_openai_response(data):

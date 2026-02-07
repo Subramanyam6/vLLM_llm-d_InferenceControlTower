@@ -1,64 +1,60 @@
 {
-  "profile": "smoke",
+  "profile": "standard",
   "target_requests": 100000,
-  "requests_attempted": 103456,
-  "requests_succeeded": 88065,
-  "requests_failed": 15391,
-  "error_rate": 0.148769,
+  "requests_attempted": 100200,
+  "requests_succeeded": 100200,
+  "requests_failed": 0,
+  "error_rate": 0.0,
   "latency_ms": {
-    "p50": 218.554,
-    "p95": 425.476,
-    "p99": 2019.465
+    "p50": 2.464,
+    "p95": 3.812,
+    "p99": 37.924
   },
-  "throughput_rps": 124.302333,
+  "throughput_rps": 299.99803,
   "backend_mode": "LLMD",
   "target_url": "http://127.0.0.1:8000/api/submit",
-  "started_at": "2026-02-06T22:56:31Z",
-  "ended_at": "2026-02-06T23:10:24Z",
-  "failure_reasons": [
-    {
-      "reason": "network",
-      "count": 15391
-    }
-  ],
+  "started_at": "2026-02-07T00:18:11Z",
+  "ended_at": "2026-02-07T00:23:48Z",
+  "failure_reasons": [],
   "worker_distribution": {
-    "A": 88065,
-    "B": 0,
-    "C": 0,
-    "D": 0,
-    "E": 0
+    "A": 19982,
+    "B": 20083,
+    "C": 20081,
+    "D": 20067,
+    "E": 19987
   },
   "worker_distribution_pct": {
-    "A": 100.0,
-    "B": 0.0,
-    "C": 0.0,
-    "D": 0.0,
-    "E": 0.0
+    "A": 19.9421,
+    "B": 20.0429,
+    "C": 20.0409,
+    "D": 20.0269,
+    "E": 19.9471
   },
   "worker_distribution_meta": {
     "other": 0,
     "missing": 0,
-    "counted": 88065
+    "counted": 100200,
+    "matched": 100200
   },
   "worker_identity": {
-    "known": 0,
-    "missing": 88065,
-    "generic": 0,
-    "coverage_pct": 0.0
+    "known": 100200,
+    "missing": 0,
+    "generic": 100200,
+    "coverage_pct": 100.0
   },
   "worker_stats": {
     "A": {
-      "requests": 88065,
+      "requests": 19982,
       "latency_ms": {
-        "count": 88065,
-        "avg": 258.269,
-        "p95": 437.288,
-        "max": 2019.465
+        "count": 19982,
+        "avg": 0.002,
+        "p95": 0.0,
+        "max": 2.0
       },
       "cache": {
         "hit": 0,
         "miss": 0,
-        "unknown": 88065,
+        "unknown": 0,
         "hit_rate": null
       },
       "response_error_count": 0,
@@ -67,19 +63,19 @@
         "queue_p95": 0.0,
         "reported_errors_avg": 0.0,
         "reported_errors_max": 0.0,
-        "reported_p95_ms_avg": 478.0,
-        "reported_p95_ms_p95": 478.0,
-        "cache_warmth_avg": 60.0,
-        "cache_warmth_p95": 60.0
+        "reported_p95_ms_avg": 0.0,
+        "reported_p95_ms_p95": 0.0,
+        "cache_warmth_avg": 0.0,
+        "cache_warmth_p95": 0.0
       }
     },
     "B": {
-      "requests": 0,
+      "requests": 20083,
       "latency_ms": {
-        "count": 0,
-        "avg": null,
-        "p95": null,
-        "max": null
+        "count": 20083,
+        "avg": 0.002,
+        "p95": 0.0,
+        "max": 5.0
       },
       "cache": {
         "hit": 0,
@@ -100,12 +96,12 @@
       }
     },
     "C": {
-      "requests": 0,
+      "requests": 20081,
       "latency_ms": {
-        "count": 0,
-        "avg": null,
-        "p95": null,
-        "max": null
+        "count": 20081,
+        "avg": 0.002,
+        "p95": 0.0,
+        "max": 3.0
       },
       "cache": {
         "hit": 0,
@@ -126,12 +122,12 @@
       }
     },
     "D": {
-      "requests": 0,
+      "requests": 20067,
       "latency_ms": {
-        "count": 0,
-        "avg": null,
-        "p95": null,
-        "max": null
+        "count": 20067,
+        "avg": 0.002,
+        "p95": 0.0,
+        "max": 2.0
       },
       "cache": {
         "hit": 0,
@@ -152,12 +148,12 @@
       }
     },
     "E": {
-      "requests": 0,
+      "requests": 19987,
       "latency_ms": {
-        "count": 0,
-        "avg": null,
-        "p95": null,
-        "max": null
+        "count": 19987,
+        "avg": 0.003,
+        "p95": 0.0,
+        "max": 2.0
       },
       "cache": {
         "hit": 0,
@@ -178,9 +174,24 @@
       }
     }
   },
+  "worker_distribution_source": "llmd_gateway_logs",
+  "worker_pod_map": {
+    "A": "llm-d-modelservice-decode-589fb6d5c7-548vg",
+    "B": "llm-d-modelservice-decode-589fb6d5c7-7w8qw",
+    "C": "llm-d-modelservice-decode-589fb6d5c7-kl8c8",
+    "D": "llm-d-modelservice-decode-589fb6d5c7-q8h6l",
+    "E": "llm-d-modelservice-decode-589fb6d5c7-wlddg"
+  },
+  "worker_pod_ip_map": {
+    "A": "10.244.0.61",
+    "B": "10.244.0.66",
+    "C": "10.244.0.67",
+    "D": "10.244.0.59",
+    "E": "10.244.0.60"
+  },
   "slo": {
     "p95_ms": 2000.0,
     "error_rate_max": 0.02
   },
-  "slo_pass": false
+  "slo_pass": true
 }

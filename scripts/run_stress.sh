@@ -10,6 +10,8 @@ REQUEST_TIMEOUT="${REQUEST_TIMEOUT:-120s}"
 SLO_P95_MS="${SLO_P95_MS:-2000}"
 SLO_ERROR_RATE_MAX="${SLO_ERROR_RATE_MAX:-0.02}"
 SCALE_VALUE="${SCALE:-5}"
+LLMD_NAMESPACE="${LLMD_NAMESPACE:-llm-d}"
+LLMD_GATEWAY_DEPLOYMENT="${LLMD_GATEWAY_DEPLOYMENT:-llm-d-infra-inference-gateway-istio}"
 DRY_RUN=0
 
 OVERRIDE_VUS=""
@@ -212,12 +214,24 @@ mkdir -p "$run_dir"
 summary_raw="$run_dir/k6_summary.json"
 results_json="$run_dir/results.json"
 summary_md="$run_dir/summary.md"
+llmd_gateway_log="$run_dir/llmd_gateway.log"
+llmd_decode_pods_json="$run_dir/llmd_decode_pods.json"
 frontend_latest_json="$ROOT/frontend/public/stress/latest.json"
 frontend_latest_md="$ROOT/frontend/public/stress/latest.md"
 started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+gateway_log_pid=""
 
 echo "Running profile '${PROFILE}'"
 echo "Output directory: $run_dir"
+
+if command -v kubectl >/dev/null 2>&1; then
+  kubectl -n "$LLMD_NAMESPACE" get pods -l llm-d.ai/role=decode -o json \
+    >"$llmd_decode_pods_json" 2>/dev/null || true
+  : >"$llmd_gateway_log"
+  kubectl -n "$LLMD_NAMESPACE" logs -f "deployment/$LLMD_GATEWAY_DEPLOYMENT" \
+    --since-time "$started_at" >"$llmd_gateway_log" 2>/dev/null &
+  gateway_log_pid=$!
+fi
 
 set +e
 k6 run "$ROOT/load/k6_submit.js" \
@@ -234,25 +248,42 @@ k6 run "$ROOT/load/k6_submit.js" \
 k6_status=$?
 set -e
 
+# Give gateway logs a moment to flush before we capture run boundaries.
+sleep 2
 ended_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+if [[ -n "${gateway_log_pid}" ]]; then
+  kill "${gateway_log_pid}" >/dev/null 2>&1 || true
+  wait "${gateway_log_pid}" 2>/dev/null || true
+fi
 
 if [[ ! -f "$summary_raw" ]]; then
   echo "k6 did not produce a summary file at $summary_raw" >&2
   exit 1
 fi
 
-python3 "$ROOT/scripts/render_stress_report.py" \
-  --summary "$summary_raw" \
-  --profile "$PROFILE" \
-  --target-requests "$TARGET_REQUESTS" \
-  --backend "$BACKEND_MODE" \
-  --target "$API_URL" \
-  --output-json "$results_json" \
-  --output-md "$summary_md" \
-  --started-at "$started_at" \
-  --ended-at "$ended_at" \
-  --slo-p95-ms "$SLO_P95_MS" \
+render_args=(
+  --summary "$summary_raw"
+  --profile "$PROFILE"
+  --target-requests "$TARGET_REQUESTS"
+  --backend "$BACKEND_MODE"
+  --target "$API_URL"
+  --output-json "$results_json"
+  --output-md "$summary_md"
+  --started-at "$started_at"
+  --ended-at "$ended_at"
+  --slo-p95-ms "$SLO_P95_MS"
   --slo-error-rate-max "$SLO_ERROR_RATE_MAX"
+)
+
+if [[ -s "$llmd_gateway_log" ]]; then
+  render_args+=(--gateway-log "$llmd_gateway_log")
+fi
+if [[ -s "$llmd_decode_pods_json" ]]; then
+  render_args+=(--llmd-pods-json "$llmd_decode_pods_json")
+fi
+
+python3 "$ROOT/scripts/render_stress_report.py" "${render_args[@]}"
 
 mkdir -p "$(dirname "$frontend_latest_json")"
 cp "$results_json" "$frontend_latest_json"

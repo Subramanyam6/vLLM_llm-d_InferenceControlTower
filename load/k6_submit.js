@@ -50,6 +50,11 @@ function normalizeWorkerLabel(value) {
   return workerLabels.includes(workerLabel) ? workerLabel : ''
 }
 
+function isLightWeightDemoMode(modeValue) {
+  const value = String(modeValue || '').trim().toLowerCase()
+  return value.includes('light-weight demo') || value === 'sim'
+}
+
 export const options = {
   scenarios: {
     submit_flow: {
@@ -110,8 +115,14 @@ export default function () {
 
   try {
     const parsed = res.json()
-    const workerLabel = normalizeWorkerLabel(parsed?.selected_worker)
+    const modeValue = String(parsed?.mode || '').trim()
+    const backendValue = String(parsed?.backend || backend || '').trim().toUpperCase()
+    const isSimMode = isLightWeightDemoMode(modeValue) || backendValue === 'SIM'
+    let workerLabel = normalizeWorkerLabel(parsed?.selected_worker)
     const workerIdentity = String(parsed?.worker_identity || '').trim()
+    const hasConcreteIdentity =
+      workerIdentity !== '' && !genericIdentityValues.has(workerIdentity.toLowerCase())
+
     if (!workerIdentity) {
       workerIdentityMissing.add(1)
     } else {
@@ -120,6 +131,12 @@ export default function () {
         workerIdentityGeneric.add(1)
       }
     }
+
+    // For llm-d/grpc paths, do not trust selected_worker if upstream identity is absent.
+    if (!isSimMode && !hasConcreteIdentity) {
+      workerLabel = ''
+    }
+
     if (parsed && parsed.error) {
       failedRequests.add(1)
       failureReasonApiError.add(1)

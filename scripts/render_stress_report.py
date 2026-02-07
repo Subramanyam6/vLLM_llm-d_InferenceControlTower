@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import json
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -170,6 +171,231 @@ def _safe_iso_delta_seconds(started_at: str, ended_at: str):
         return 0.0
 
 
+def _parse_iso_datetime(value: str):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _percentile(values, p):
+    if not values:
+        return None
+    values = sorted(values)
+    idx = int(round((p / 100.0) * (len(values) - 1)))
+    idx = max(0, min(len(values) - 1, idx))
+    return float(values[idx])
+
+
+def _load_llmd_pod_ip_map(path: Path):
+    if not path or not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    items = payload.get("items") or []
+    mapping = {}
+    for item in items:
+        status = item.get("status") or {}
+        metadata = item.get("metadata") or {}
+        ip = str(status.get("podIP") or "").strip()
+        name = str(metadata.get("name") or "").strip()
+        if ip and name:
+            mapping[ip] = name
+    return mapping
+
+
+def _parse_gateway_log_line(line):
+    if not line:
+        return None
+    line = line.strip()
+    if not line.startswith("["):
+        return None
+    closing = line.find("]")
+    if closing <= 1:
+        return None
+    timestamp = line[1:closing]
+    if "/v1/chat/completions" not in line:
+        return None
+
+    status_match = re.search(r'"\s+(\d{3})\s', line)
+    if not status_match:
+        return None
+    try:
+        status_code = int(status_match.group(1))
+    except Exception:
+        return None
+
+    # Envoy access log has four numeric fields before x-forwarded-for.
+    metrics_match = re.search(
+        r'"\s+\d{3}\s+.*?\s(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+"', line
+    )
+    duration_ms = None
+    if metrics_match:
+        try:
+            duration_ms = float(metrics_match.group(3))
+        except Exception:
+            duration_ms = None
+
+    quoted_parts = re.findall(r'"([^"]*)"', line)
+    if len(quoted_parts) < 2:
+        return None
+    request_line = quoted_parts[0]
+    upstream_host = quoted_parts[-1]
+    upstream_ip = str(upstream_host).split(":", 1)[0].strip()
+    if not upstream_ip:
+        return None
+    return {
+        "timestamp": timestamp,
+        "request_line": request_line,
+        "status_code": status_code,
+        "duration_ms": duration_ms,
+        "upstream_ip": upstream_ip,
+        "upstream_host": upstream_host,
+    }
+
+
+def _aggregate_llmd_gateway_logs(log_path: Path, pod_ip_map, started_at: str, ended_at: str):
+    if not log_path or not log_path.exists():
+        return None
+    start_dt = _parse_iso_datetime(started_at)
+    end_dt = _parse_iso_datetime(ended_at)
+    if start_dt is None or end_dt is None:
+        return None
+    # Shell timestamps are second-granularity; add a small grace window.
+    start_window = start_dt - timedelta(seconds=1)
+    end_window = end_dt + timedelta(seconds=1)
+
+    by_pod = {}
+    unmatched_ip_counts = {}
+    parsed_rows = 0
+
+    with log_path.open("r", encoding="utf-8", errors="replace") as handle:
+        for raw_line in handle:
+            parsed = _parse_gateway_log_line(raw_line)
+            if not parsed:
+                continue
+            row_dt = _parse_iso_datetime(parsed["timestamp"])
+            if row_dt is None:
+                continue
+            if row_dt < start_window or row_dt > end_window:
+                continue
+
+            parsed_rows += 1
+            pod_name = pod_ip_map.get(parsed["upstream_ip"])
+            if not pod_name:
+                unmatched_ip_counts[parsed["upstream_ip"]] = (
+                    unmatched_ip_counts.get(parsed["upstream_ip"], 0) + 1
+                )
+                continue
+
+            pod_stats = by_pod.setdefault(
+                pod_name,
+                {
+                    "requests": 0,
+                    "error_count": 0,
+                    "durations_ms": [],
+                    "upstream_ip": parsed["upstream_ip"],
+                },
+            )
+            pod_stats["requests"] += 1
+            if parsed["status_code"] >= 400:
+                pod_stats["error_count"] += 1
+            if parsed["duration_ms"] is not None:
+                pod_stats["durations_ms"].append(float(parsed["duration_ms"]))
+
+    if parsed_rows <= 0:
+        return None
+
+    ordered_pods = sorted(by_pod.keys())
+    selected_pods = ordered_pods[:5]
+    overflow_pods = ordered_pods[5:]
+    overflow_count = sum(by_pod[pod]["requests"] for pod in overflow_pods)
+    missing_count = sum(unmatched_ip_counts.values())
+
+    labels = ("A", "B", "C", "D", "E")
+    distribution = {label: 0 for label in labels}
+    worker_stats = {label: None for label in labels}
+    pod_map_by_label = {}
+    pod_ip_by_label = {}
+
+    for idx, pod_name in enumerate(selected_pods):
+        label = labels[idx]
+        pod_stats = by_pod[pod_name]
+        durations = pod_stats.get("durations_ms") or []
+        latency_avg = sum(durations) / len(durations) if durations else None
+        distribution[label] = int(pod_stats["requests"])
+        worker_stats[label] = {
+            "requests": int(pod_stats["requests"]),
+            "latency_avg_ms": _round_or_none(latency_avg),
+            "latency_p95_ms": _round_or_none(_percentile(durations, 95)),
+            "latency_max_ms": _round_or_none(max(durations) if durations else None),
+            "response_error_count": int(pod_stats["error_count"]),
+        }
+        pod_map_by_label[label] = pod_name
+        pod_ip_by_label[label] = pod_stats.get("upstream_ip")
+
+    return {
+        "distribution": distribution,
+        "worker_stats": worker_stats,
+        "pod_map": pod_map_by_label,
+        "pod_ip_map": pod_ip_by_label,
+        "meta": {
+            "other": int(overflow_count),
+            "missing": int(missing_count),
+            "counted": int(parsed_rows),
+            "matched": int(parsed_rows - missing_count),
+        },
+    }
+
+
+def _merge_gateway_distribution(
+    result,
+    worker_distribution,
+    worker_distribution_meta,
+    worker_stats,
+    gateway_distribution,
+):
+    if not gateway_distribution:
+        result["worker_distribution_source"] = "submit_response"
+        result["worker_pod_map"] = {}
+        result["worker_pod_ip_map"] = {}
+        return worker_distribution, worker_distribution_meta, worker_stats
+
+    merged_distribution = dict(worker_distribution)
+    merged_distribution.update(gateway_distribution["distribution"])
+
+    merged_meta = {
+        "other": int(gateway_distribution["meta"]["other"]),
+        "missing": int(gateway_distribution["meta"]["missing"]),
+        "counted": int(gateway_distribution["meta"]["counted"]),
+        "matched": int(gateway_distribution["meta"]["matched"]),
+    }
+
+    merged_worker_stats = dict(worker_stats)
+    for label in ("A", "B", "C", "D", "E"):
+        existing = dict(merged_worker_stats.get(label) or {})
+        gateway_worker = gateway_distribution["worker_stats"].get(label)
+        if gateway_worker:
+            latency = dict(existing.get("latency_ms") or {})
+            latency["count"] = int(gateway_worker["requests"])
+            latency["avg"] = gateway_worker["latency_avg_ms"]
+            latency["p95"] = gateway_worker["latency_p95_ms"]
+            latency["max"] = gateway_worker["latency_max_ms"]
+            existing["latency_ms"] = latency
+            existing["requests"] = int(gateway_worker["requests"])
+            existing["response_error_count"] = int(gateway_worker["response_error_count"])
+        merged_worker_stats[label] = existing
+
+    result["worker_distribution_source"] = "llmd_gateway_logs"
+    result["worker_pod_map"] = gateway_distribution["pod_map"]
+    result["worker_pod_ip_map"] = gateway_distribution["pod_ip_map"]
+    return merged_distribution, merged_meta, merged_worker_stats
+
+
 def _build_markdown(result, failure_reasons, slo):
     status = "PASS" if result["slo_pass"] else "FAIL"
     lines = []
@@ -198,6 +424,23 @@ def _build_markdown(result, failure_reasons, slo):
     lines.append(f"| p99 latency (ms) | {result['latency_ms']['p99']:.2f} |")
     lines.append("")
     lines.append("## Worker Distribution (A-E)")
+    lines.append("")
+    lines.append(
+        f"- Source: `{result.get('worker_distribution_source', 'submit_response')}`"
+    )
+    pod_map = result.get("worker_pod_map") or {}
+    pod_ip_map = result.get("worker_pod_ip_map") or {}
+    if pod_map:
+        lines.append("- Worker label mapping:")
+        for label in ("A", "B", "C", "D", "E"):
+            pod_name = pod_map.get(label)
+            if not pod_name:
+                continue
+            pod_ip = pod_ip_map.get(label)
+            if pod_ip:
+                lines.append(f"  - {label} -> `{pod_name}` ({pod_ip})")
+            else:
+                lines.append(f"  - {label} -> `{pod_name}`")
     lines.append("")
     lines.append("| Worker | Requests | Share |")
     lines.append("| --- | --- | --- |")
@@ -283,6 +526,8 @@ def main():
     parser.add_argument("--ended-at", required=False)
     parser.add_argument("--slo-p95-ms", type=float, default=2000.0)
     parser.add_argument("--slo-error-rate-max", type=float, default=0.02)
+    parser.add_argument("--gateway-log", required=False, help="Path to llm-d gateway access logs")
+    parser.add_argument("--llmd-pods-json", required=False, help="Path to llm-d decode pods JSON")
     args = parser.parse_args()
 
     summary_path = Path(args.summary)
@@ -334,13 +579,18 @@ def main():
     identity_coverage_pct = (
         (worker_identity_known / identity_total) * 100.0 if identity_total > 0 else 0.0
     )
-    worker_total = sum(worker_distribution.values())
-    worker_distribution_pct = {}
-    for label, count in worker_distribution.items():
-        if worker_total > 0:
-            worker_distribution_pct[label] = round((count / worker_total) * 100.0, 4)
-        else:
-            worker_distribution_pct[label] = 0.0
+    gateway_distribution = None
+    if (args.backend or "").strip().upper() == "LLMD":
+        gateway_log_path = Path(args.gateway_log) if args.gateway_log else None
+        pods_json_path = Path(args.llmd_pods_json) if args.llmd_pods_json else None
+        pod_ip_map = _load_llmd_pod_ip_map(pods_json_path) if pods_json_path else {}
+        gateway_distribution = _aggregate_llmd_gateway_logs(
+            gateway_log_path,
+            pod_ip_map,
+            started_at,
+            ended_at,
+        )
+
     slo = {
         "p95_ms": float(args.slo_p95_ms),
         "error_rate_max": float(args.slo_error_rate_max),
@@ -363,17 +613,41 @@ def main():
         "started_at": started_at,
         "ended_at": ended_at,
         "failure_reasons": failure_reasons,
-        "worker_distribution": worker_distribution,
-        "worker_distribution_pct": worker_distribution_pct,
-        "worker_distribution_meta": worker_distribution_meta,
+        "worker_distribution": {},
+        "worker_distribution_pct": {},
+        "worker_distribution_meta": {},
         "worker_identity": {
             "known": int(worker_identity_known),
             "missing": int(worker_identity_missing),
             "generic": int(worker_identity_generic),
             "coverage_pct": float(round(identity_coverage_pct, 4)),
         },
-        "worker_stats": worker_stats,
+        "worker_stats": {},
     }
+    (
+        worker_distribution,
+        worker_distribution_meta,
+        worker_stats,
+    ) = _merge_gateway_distribution(
+        result,
+        worker_distribution,
+        worker_distribution_meta,
+        worker_stats,
+        gateway_distribution,
+    )
+
+    worker_total = sum(worker_distribution.values())
+    worker_distribution_pct = {}
+    for label, count in worker_distribution.items():
+        if worker_total > 0:
+            worker_distribution_pct[label] = round((count / worker_total) * 100.0, 4)
+        else:
+            worker_distribution_pct[label] = 0.0
+
+    result["worker_distribution"] = worker_distribution
+    result["worker_distribution_pct"] = worker_distribution_pct
+    result["worker_distribution_meta"] = worker_distribution_meta
+    result["worker_stats"] = worker_stats
     result["slo"] = slo
     result["slo_pass"] = result["latency_ms"]["p95"] <= slo["p95_ms"] and result[
         "error_rate"

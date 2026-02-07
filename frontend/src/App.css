@@ -309,6 +309,12 @@
   color: #7ee7c8;
 }
 
+.stress-worker-card small {
+  font-size: 10px;
+  color: #9bb0c8;
+  line-height: 1.2;
+}
+
 .stress-worker-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

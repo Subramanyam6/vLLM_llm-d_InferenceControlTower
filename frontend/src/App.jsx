@@ -867,6 +867,9 @@ function App() {
   const stressIdentityMissing = Number(stressResults?.worker_identity?.missing || 0)
   const stressIdentityGeneric = Number(stressResults?.worker_identity?.generic || 0)
   const stressIdentityCoveragePct = Number(stressResults?.worker_identity?.coverage_pct || 0)
+  const stressDistributionSource = String(stressResults?.worker_distribution_source || 'submit_response')
+  const stressPodMap = stressResults?.worker_pod_map || {}
+  const stressPodIpMap = stressResults?.worker_pod_ip_map || {}
   const stressWorkerDistribution = ['A', 'B', 'C', 'D', 'E'].map((label) => {
     const stats = stressResults?.worker_stats?.[label] || {}
     const latency = stats?.latency_ms || {}
@@ -888,6 +891,8 @@ function App() {
       reportedErrorsAvg: asFiniteNumber(observed?.reported_errors_avg),
       reportedP95Avg: asFiniteNumber(observed?.reported_p95_ms_avg),
       cacheWarmthAvg: asFiniteNumber(observed?.cache_warmth_avg),
+      podName: String(stressPodMap?.[label] || ''),
+      podIp: String(stressPodIpMap?.[label] || ''),
     }
   })
   const renderRobotSvg = (idPrefix) => (
@@ -1203,7 +1208,7 @@ function App() {
                       Worker identity coverage: {formatMetric(stressIdentityCoveragePct, 2, '%')} (known {stressIdentityKnown.toLocaleString()} / missing {stressIdentityMissing.toLocaleString()}, generic {stressIdentityGeneric.toLocaleString()}).
                     </p>
                     <p className="stress-plain">
-                      The worker split below is what this llm-d run reported for workers A-E.
+                      Worker split source: {stressDistributionSource === 'llmd_gateway_logs' ? 'llm-d gateway logs (real pod traffic)' : 'submit response fields'}.
                     </p>
                     <div className="stress-worker-grid">
                       {stressWorkerDistribution.map((item) => (
@@ -1211,13 +1216,18 @@ function App() {
                           <span>Worker {item.label}</span>
                           <strong>{item.count.toLocaleString()}</strong>
                           <em>{item.pct.toFixed(2)}%</em>
+                          {item.podName && (
+                            <small>{item.podName}{item.podIp ? ` (${item.podIp})` : ''}</small>
+                          )}
                         </div>
                       ))}
                     </div>
                     <div className="stress-worker-detail-grid">
                       {stressWorkerDistribution.map((item) => (
                         <div key={`detail-${item.label}`} className="stress-worker-detail-card">
-                          <div className="stress-worker-detail-title">Worker {item.label} detail</div>
+                          <div className="stress-worker-detail-title">
+                            Worker {item.label} detail{item.podName ? ` - ${item.podName}` : ''}
+                          </div>
                           <div className="stress-worker-detail-line">
                             Latency avg/p95: {formatMetric(item.latencyAvg, 2, ' ms')} / {formatMetric(item.latencyP95, 2, ' ms')}
                           </div>

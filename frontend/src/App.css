@@ -242,6 +242,85 @@
   gap: 10px;
 }
 
+.overview-summary {
+  margin: 0;
+  font-size: 12px;
+  color: #c6d9ec;
+}
+
+.overview-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid rgba(121, 176, 226, 0.26);
+  border-radius: 12px;
+  background: rgba(8, 12, 18, 0.65);
+}
+
+.overview-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #cfe0f2;
+}
+
+.overview-table th,
+.overview-table td {
+  border-bottom: 1px solid rgba(145, 174, 209, 0.2);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.overview-table th {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9cdaf7;
+  background: rgba(15, 28, 42, 0.6);
+}
+
+.overview-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.overview-table td:first-child {
+  font-weight: 600;
+  color: #dff2ff;
+}
+
+.availability-pill {
+  display: inline-block;
+  min-width: 40px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 10px;
+  font-family: var(--mono-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.availability-pill.yes {
+  background: rgba(90, 219, 188, 0.2);
+  border-color: rgba(90, 219, 188, 0.55);
+  color: #9dffe1;
+}
+
+.availability-pill.no {
+  background: rgba(131, 149, 175, 0.16);
+  border-color: rgba(149, 166, 188, 0.44);
+  color: #c1cfdf;
+}
+
+.overview-note {
+  margin: 0;
+  font-size: 11px;
+  color: #9fb8cf;
+}
+
 .info-split {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

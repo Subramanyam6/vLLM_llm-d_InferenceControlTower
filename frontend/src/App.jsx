@@ -259,6 +259,81 @@ const INTERNAL_PILL_GAP_MS = 1000
 const DUMMY_HINT = ' (dummy - host locally to use original tools)'
 const TWINKLE_STAR_COUNT = 90
 
+const OVERVIEW_TECH_ROWS = [
+  {
+    tech: 'React (Vite) control tower UI',
+    hosted: true,
+    local: true,
+    about: 'Interactive frontend for routing, worker state, and stress results.',
+  },
+  {
+    tech: 'Python gateway / control tower API',
+    hosted: true,
+    local: true,
+    about: 'Receives prompts, applies routing logic, and returns responses.',
+  },
+  {
+    tech: 'SIM backend (dummy Python functions)',
+    hosted: true,
+    local: true,
+    about: 'Low-cost simulation of worker behavior for demo flow and chaos controls.',
+  },
+  {
+    tech: 'gRPC worker backend',
+    hosted: false,
+    local: true,
+    about: 'Routes traffic to local gRPC inference workers.',
+  },
+  {
+    tech: 'llm-d gateway path',
+    hosted: false,
+    local: true,
+    about: 'Sends chat requests through llm-d style gateway routing.',
+  },
+  {
+    tech: 'SGLang pre-route',
+    hosted: false,
+    local: true,
+    about: 'Rewrites prompts first, then forwards to llm-d.',
+  },
+  {
+    tech: 'Kubernetes scaling (kind + kubectl + Helm)',
+    hosted: false,
+    local: true,
+    about: 'Scales worker replicas and validates distributed behavior.',
+  },
+  {
+    tech: 'Istio + Gateway API',
+    hosted: false,
+    local: true,
+    about: 'Controls service-mesh routing and traffic policy.',
+  },
+  {
+    tech: 'k6 stress testing',
+    hosted: false,
+    local: true,
+    about: 'Sends high-volume chat traffic and produces repeatable load reports.',
+  },
+  {
+    tech: 'Gateway-log worker distribution',
+    hosted: false,
+    local: true,
+    about: 'Shows exact worker split from llm-d gateway logs.',
+  },
+  {
+    tech: 'Prometheus + Grafana + Jaeger (OpenTelemetry pipeline)',
+    hosted: false,
+    local: true,
+    about: 'Adds real metrics and traces for observability.',
+  },
+  {
+    tech: 'Hugging Face Spaces deployment',
+    hosted: true,
+    local: false,
+    about: 'Publishes the lightweight demo in the cloud.',
+  },
+]
+
 const seededUnit = (seed) => {
   const raw = Math.sin(seed * 12.9898) * 43758.5453123
   return raw - Math.floor(raw)
@@ -854,12 +929,6 @@ function App() {
           ? 'Scaled in Kubernetes (llm-d)'
           : 'Scaled in Kubernetes'
         : 'Local scale'
-  const hostedTitle = disableGrpc
-    ? 'Hosted (Light-weight Demo)'
-    : 'Light-weight Demo (no local services)'
-  const hostedNote = disableGrpc
-    ? 'Runs in hosted mode with dummy Python functions that mimic routing and worker behavior.'
-    : 'No local services required. This Light-weight Demo uses dummy Python functions to mimic backend behavior.'
   const stressAttempts = Number(stressResults?.requests_attempted || 0)
   const stressFailed = Number(stressResults?.requests_failed || 0)
   const stressErrorRate = Number(stressResults?.error_rate || 0)
@@ -1111,75 +1180,47 @@ function App() {
 
         {showProjectSnapshot && (
           <div className="info-content">
-            <div className="info-split">
-              <div className="info-block hosted">
-                <div className="info-block-title">{hostedTitle}</div>
-                <ul className="info-list">
-                  <li>{hostedNote}</li>
-                  <li>This path is for UX/demo flow and observability storytelling, not real backend traffic.</li>
-                  <li>Send prompts, see routing decisions, and simulate latency/rate limits.</li>
-                  <li>Observe worker health, queues, and cache warmth.</li>
-                </ul>
-              </div>
-              <div className="info-block local">
-                <div className="info-block-title">Local-Only (requires setup)</div>
-                <ul className="info-list">
-                  <li>gRPC backend mode with real workers.</li>
-                  <li>llm-d gateway mode (set <code>VITE_ENABLE_LLMD=1</code>).</li>
-                  <li>
-                    SGLang pre-route for llm-d (set <code>ENABLE_SGLANG_FRONT=1</code>):
-                    rewrites prompts first, then forwards to llm-d.
-                  </li>
-                  <li>
-                    SGLang endpoint for this stage: <code>SGLANG_HTTP_URL</code>{' '}
-                    (OpenAI chat API format).
-                  </li>
-                  <li>vLLM dev image via OpenAI HTTP (set <code>VLLM_HTTP_URL</code>).</li>
-                  <li>Kubernetes scaling + service-mesh routing.</li>
-                  <li>Local gateway + mesh for true backend traffic.</li>
-                </ul>
-                {lockMode && (
-                  <div className="info-note">
-                    Mode is locked for this run to prevent misrouted traffic.
-                  </div>
-                )}
-              </div>
+            <p className="overview-summary">
+              This matrix shows which core parts are active in hosted demo mode versus local setup mode.
+            </p>
+            <div className="overview-table-wrap">
+              <table className="overview-table">
+                <thead>
+                  <tr>
+                    <th>Tech</th>
+                    <th>Hosted</th>
+                    <th>Local</th>
+                    <th>What It Does</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {OVERVIEW_TECH_ROWS.map((row) => (
+                    <tr key={row.tech}>
+                      <td>{row.tech}</td>
+                      <td>
+                        <span className={`availability-pill ${row.hosted ? 'yes' : 'no'}`}>
+                          {row.hosted ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`availability-pill ${row.local ? 'yes' : 'no'}`}>
+                          {row.local ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td>{row.about}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <ul className="info-list info-meta">
-              <li>
-                <strong>What it is:</strong> A control tower UI + gateway that
-                routes LLM requests across workers with cache-aware, queue-aware
-                logic.
-              </li>
-              <li>
-                <strong>Tech:</strong> React (Vite) UI, Python gateway, gRPC
-                simulator, SGLang pre-route, vLLM OpenAI HTTP, Docker, K8s/Istio
-                hooks, Prometheus metrics, and optional OTEL collector export.
-              </li>
-              <li>
-                <strong>llm-d / vLLM mimic:</strong> Worker selection, retries,
-                rate limits, and observability patterns without a full GPU
-                cluster. Optional llm-d local mode routes through an llm-d
-                gateway (Kubernetes namespace <code>llm-d</code>) using the
-                official <code>llm-d-inference-sim</code> image. gRPC mode runs
-                in the llm-d mesh (<code>llm-d-mesh</code>) with a local
-                inference-sim image built from <code>Dockerfile.grpc-server</code>.
-                Can also target a local vLLM dev image via{' '}
-                <code>VLLM_HTTP_URL</code>.
-              </li>
-              <li>
-                <strong>SGLang stage behavior:</strong> When enabled in local
-                llm-d mode, the gateway sends your prompt to SGLang first to
-                rewrite it into a concise downstream instruction, then forwards
-                that rewritten prompt to llm-d. Hosted HF mode stays SIM-only, so
-                this stage is intentionally disabled there.
-              </li>
-              <li>
-                <strong>Tools (hosted/local):</strong> Hosted via Docker (HF
-                Spaces), local workflows use Docker, kubectl, Istio, and kind
-                for mesh demos.
-              </li>
-            </ul>
+            <div className="overview-note">
+              Hosted mode is intentionally lightweight and uses dummy backend behavior; local mode enables the full backend stack.
+            </div>
+            {lockMode && (
+              <div className="info-note">
+                Mode is locked for this run to prevent misrouted traffic.
+              </div>
+            )}
           </div>
         )}
 

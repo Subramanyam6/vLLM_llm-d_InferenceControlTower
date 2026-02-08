@@ -58,11 +58,35 @@ Backend flags:
 - `ENABLE_SGLANG_FRONT=1` to route llm-d requests through SGLang first
 - `SGLANG_HTTP_URL=http://127.0.0.1:30000`
 - `VLLM_HTTP_URL=http://127.0.0.1:8001` (optional OpenAI HTTP target for gRPC track)
+- `PROMETHEUS_METRICS_ENABLED=1` to expose `/metrics` from API
+- `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/v1/traces` to send spans to OTel Collector
 
 Frontend flags:
 - `VITE_ENABLE_LLMD=1`
 - `VITE_DISABLE_GRPC=1`
 - `VITE_LOCK_MODE=1`
+
+## Real Observability Stack (Local)
+
+Start local observability services:
+```bash
+scripts/observability_stack.sh up
+```
+
+Endpoints:
+- Prometheus: `http://127.0.0.1:9090`
+- Grafana: `http://127.0.0.1:3001` (`admin` / `admin`)
+- Jaeger: `http://127.0.0.1:16686`
+
+Run API with tracing + metrics:
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318/v1/traces \
+PROMETHEUS_METRICS_ENABLED=1 \
+MODE=LLMD ./run_all.sh
+```
+
+The API now exposes Prometheus metrics at:
+- `http://127.0.0.1:8000/metrics`
 
 ## Offline Stress Testing (k6)
 
@@ -98,6 +122,11 @@ scripts/run_stress.sh --profile endurance --dry-run
 Each run writes:
 - `reports/load/<timestamp>/results.json`
 - `reports/load/<timestamp>/summary.md`
+- `frontend/public/stress/latest.json` (UI latest report)
+- `frontend/public/stress/dated/<YYYY-MM-DD>.json` (UI dated report)
+
+If Prometheus is running, `run_stress.sh` also attaches a real observability snapshot to `results.json`
+under the `observability` field (request rate, latency histogram, and worker distribution seen by metrics).
 
 `results.json` includes:
 - profile

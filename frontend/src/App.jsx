@@ -253,7 +253,8 @@ const workerLaneY = (index, total) => {
 
 const statusClassName = (status) => String(status || 'pending').toLowerCase()
 
-const STRESS_RESULTS_BUTTON_DATE = '02/06/2026'
+const STRESS_RESULTS_DATE_KEY = '2026-02-07'
+const STRESS_RESULTS_DATE = '02/07/2026'
 const INTERNAL_PILL_GAP_MS = 1000
 const DUMMY_HINT = ' (dummy - host locally to use original tools)'
 const TWINKLE_STAR_COUNT = 90
@@ -422,6 +423,7 @@ function App() {
     worker: '',
     workerIdentity: '',
   })
+  const [showProjectSnapshot, setShowProjectSnapshot] = useState(false)
   const [showStressResults, setShowStressResults] = useState(false)
   const [stressResults, setStressResults] = useState(null)
   const [stressLoading, setStressLoading] = useState(false)
@@ -787,7 +789,7 @@ function App() {
     setStressLoading(true)
     setStressError('')
     try {
-      const tryUrls = ['/api/stress/latest', '/stress/latest.json']
+      const tryUrls = [`/stress/dated/${STRESS_RESULTS_DATE_KEY}.json`]
       let loaded = null
       let reportMissing = false
       for (const url of tryUrls) {
@@ -809,7 +811,7 @@ function App() {
         setStressResults(null)
         setStressError(
           reportMissing
-            ? 'No stress report found yet. Run scripts/run_stress.sh first.'
+            ? `No report found for ${STRESS_RESULTS_DATE} yet. Run scripts/run_stress.sh first.`
             : 'Unable to load stress report. If API was just updated, restart local services.',
         )
         return
@@ -830,9 +832,12 @@ function App() {
   }, [])
 
   const handleStressToggle = () => {
-    const next = !showStressResults
-    setShowStressResults(next)
-    if (next) loadStressResults()
+    if (showStressResults) {
+      setShowStressResults(false)
+      return
+    }
+    setShowStressResults(true)
+    loadStressResults()
   }
 
   const modeLabel =
@@ -856,45 +861,35 @@ function App() {
     ? 'Runs in hosted mode with dummy Python functions that mimic routing and worker behavior.'
     : 'No local services required. This Light-weight Demo uses dummy Python functions to mimic backend behavior.'
   const stressAttempts = Number(stressResults?.requests_attempted || 0)
-  const stressSuccess = Number(stressResults?.requests_succeeded || 0)
   const stressFailed = Number(stressResults?.requests_failed || 0)
   const stressErrorRate = Number(stressResults?.error_rate || 0)
   const stressDurationSec = runDurationSec(stressResults?.started_at, stressResults?.ended_at)
+  const stressK6Throughput = Number(stressResults?.throughput_rps || 0)
+  const stressK6P95 = Number(stressResults?.latency_ms?.p95 || 0)
   const stressSuccessRate = stressAttempts > 0
-    ? (stressSuccess / stressAttempts) * 100
+    ? ((stressAttempts - stressFailed) / stressAttempts) * 100
     : 0
-  const stressIdentityKnown = Number(stressResults?.worker_identity?.known || 0)
-  const stressIdentityMissing = Number(stressResults?.worker_identity?.missing || 0)
-  const stressIdentityGeneric = Number(stressResults?.worker_identity?.generic || 0)
-  const stressIdentityCoveragePct = Number(stressResults?.worker_identity?.coverage_pct || 0)
   const stressDistributionSource = String(stressResults?.worker_distribution_source || 'submit_response')
+  const stressDistributionSourceLabel = stressDistributionSource === 'llmd_gateway_logs'
+    ? 'llm-d gateway logs (exact worker split)'
+    : 'submit response fields'
+  const stressLlmdGatewayRun = stressDistributionSource === 'llmd_gateway_logs'
   const stressPodMap = stressResults?.worker_pod_map || {}
   const stressPodIpMap = stressResults?.worker_pod_ip_map || {}
   const stressWorkerDistribution = ['A', 'B', 'C', 'D', 'E'].map((label) => {
-    const stats = stressResults?.worker_stats?.[label] || {}
-    const latency = stats?.latency_ms || {}
-    const cache = stats?.cache || {}
-    const observed = stats?.observed || {}
-    const rawHitRate = asFiniteNumber(cache?.hit_rate)
     return {
       label,
       count: Number(stressResults?.worker_distribution?.[label] || 0),
       pct: Number(stressResults?.worker_distribution_pct?.[label] || 0),
-      latencyAvg: asFiniteNumber(latency?.avg),
-      latencyP95: asFiniteNumber(latency?.p95),
-      cacheHit: Number(cache?.hit || 0),
-      cacheMiss: Number(cache?.miss || 0),
-      cacheUnknown: Number(cache?.unknown || 0),
-      cacheHitRatePct: rawHitRate === null ? null : rawHitRate * 100,
-      responseErrors: Number(stats?.response_error_count || 0),
-      queueAvg: asFiniteNumber(observed?.queue_avg),
-      reportedErrorsAvg: asFiniteNumber(observed?.reported_errors_avg),
-      reportedP95Avg: asFiniteNumber(observed?.reported_p95_ms_avg),
-      cacheWarmthAvg: asFiniteNumber(observed?.cache_warmth_avg),
       podName: String(stressPodMap?.[label] || ''),
       podIp: String(stressPodIpMap?.[label] || ''),
     }
   })
+  const stressObservability = stressResults?.observability || null
+  const observabilityEnabled = Boolean(stressObservability?.enabled)
+  const observabilityRequests = stressObservability?.requests || {}
+  const observabilityLatency = stressObservability?.latency_ms || {}
+  const observabilityUnknownWorkers = Number(stressObservability?.worker_distribution?.unknown || 0)
   const renderRobotSvg = (idPrefix) => (
     <svg
       className="robot-svg"
@@ -1087,129 +1082,213 @@ function App() {
       </header>
 
       <section className="info-card">
-        <div className="info-icon" aria-hidden="true">
-          i
-        </div>
-        <div className="info-content">
-          <div className="info-title">Project Snapshot</div>
-          <div className="info-split">
-            <div className="info-block hosted">
-              <div className="info-block-title">{hostedTitle}</div>
-              <ul className="info-list">
-                <li>{hostedNote}</li>
-                <li>This path is for UX/demo flow and observability storytelling, not real backend traffic.</li>
-                <li>Send prompts, see routing decisions, and simulate latency/rate limits.</li>
-                <li>Observe worker health, queues, and cache warmth.</li>
-              </ul>
-            </div>
-            <div className="info-block local">
-              <div className="info-block-title">Local-Only (requires setup)</div>
-              <ul className="info-list">
-                <li>gRPC backend mode with real workers.</li>
-                <li>llm-d gateway mode (set <code>VITE_ENABLE_LLMD=1</code>).</li>
-                <li>
-                  SGLang pre-route for llm-d (set <code>ENABLE_SGLANG_FRONT=1</code>):
-                  rewrites prompts first, then forwards to llm-d.
-                </li>
-                <li>
-                  SGLang endpoint for this stage: <code>SGLANG_HTTP_URL</code>{' '}
-                  (OpenAI chat API format).
-                </li>
-                <li>vLLM dev image via OpenAI HTTP (set <code>VLLM_HTTP_URL</code>).</li>
-                <li>Kubernetes scaling + service-mesh routing.</li>
-                <li>Local gateway + mesh for true backend traffic.</li>
-              </ul>
-              {lockMode && (
-                <div className="info-note">
-                  Mode is locked for this run to prevent misrouted traffic.
-                </div>
-              )}
-            </div>
-          </div>
-          <ul className="info-list info-meta">
-            <li>
-              <strong>What it is:</strong> A control tower UI + gateway that
-              routes LLM requests across workers with cache-aware, queue-aware
-              logic.
-            </li>
-            <li>
-              <strong>Tech:</strong> React (Vite) UI, Python gateway, gRPC
-              simulator, SGLang pre-route, vLLM OpenAI HTTP, Docker, K8s/Istio
-              hooks, and OTEL console export.
-            </li>
-            <li>
-              <strong>llm-d / vLLM mimic:</strong> Worker selection, retries,
-              rate limits, and observability patterns without a full GPU
-              cluster. Optional llm-d local mode routes through an llm-d
-              gateway (Kubernetes namespace <code>llm-d</code>) using the
-              official <code>llm-d-inference-sim</code> image. gRPC mode runs
-              in the llm-d mesh (<code>llm-d-mesh</code>) with a local
-              inference-sim image built from <code>Dockerfile.grpc-server</code>.
-              Can also target a local vLLM dev image via{' '}
-              <code>VLLM_HTTP_URL</code>.
-            </li>
-            <li>
-              <strong>SGLang stage behavior:</strong> When enabled in local
-              llm-d mode, the gateway sends your prompt to SGLang first to
-              rewrite it into a concise downstream instruction, then forwards
-              that rewritten prompt to llm-d. Hosted HF mode stays SIM-only, so
-              this stage is intentionally disabled there.
-            </li>
-            <li>
-              <strong>Tools (hosted/local):</strong> Hosted via Docker (HF
-              Spaces), local workflows use Docker, kubectl, Istio, and kind
-              for mesh demos.
-            </li>
-          </ul>
-          <div className="stress-results">
+        <div className="info-head">
+          <div className="info-controls">
             <button
               type="button"
-              className={`stress-results-btn${showStressResults ? ' open' : ''}`}
-              onClick={handleStressToggle}
+              className={`info-icon${showProjectSnapshot ? ' open' : ''}`}
+              onClick={() => setShowProjectSnapshot((prev) => !prev)}
+              title="Project Overview"
+              aria-label={showProjectSnapshot ? 'Collapse Project Overview' : 'Expand Project Overview'}
+              aria-expanded={showProjectSnapshot}
             >
-              Stress Test {STRESS_RESULTS_BUTTON_DATE}
+              i
+              <span className="info-hover-label" aria-hidden="true">
+                Project Overview
+              </span>
             </button>
-            {showStressResults && (
-              <div className="stress-results-panel">
-                {stressLoading && <p className="stress-plain">Loading latest report…</p>}
-                {!stressLoading && stressError && (
-                  <p className="stress-plain">{stressError}</p>
+            <button
+              type="button"
+              className={`info-icon info-results-tab${showStressResults ? ' open' : ''}`}
+              onClick={handleStressToggle}
+              title={`Stress Testing Results ${STRESS_RESULTS_DATE}`}
+            >
+              Results {STRESS_RESULTS_DATE}
+            </button>
+          </div>
+          <div className="info-head-rule" aria-hidden="true" />
+        </div>
+
+        {showProjectSnapshot && (
+          <div className="info-content">
+            <div className="info-split">
+              <div className="info-block hosted">
+                <div className="info-block-title">{hostedTitle}</div>
+                <ul className="info-list">
+                  <li>{hostedNote}</li>
+                  <li>This path is for UX/demo flow and observability storytelling, not real backend traffic.</li>
+                  <li>Send prompts, see routing decisions, and simulate latency/rate limits.</li>
+                  <li>Observe worker health, queues, and cache warmth.</li>
+                </ul>
+              </div>
+              <div className="info-block local">
+                <div className="info-block-title">Local-Only (requires setup)</div>
+                <ul className="info-list">
+                  <li>gRPC backend mode with real workers.</li>
+                  <li>llm-d gateway mode (set <code>VITE_ENABLE_LLMD=1</code>).</li>
+                  <li>
+                    SGLang pre-route for llm-d (set <code>ENABLE_SGLANG_FRONT=1</code>):
+                    rewrites prompts first, then forwards to llm-d.
+                  </li>
+                  <li>
+                    SGLang endpoint for this stage: <code>SGLANG_HTTP_URL</code>{' '}
+                    (OpenAI chat API format).
+                  </li>
+                  <li>vLLM dev image via OpenAI HTTP (set <code>VLLM_HTTP_URL</code>).</li>
+                  <li>Kubernetes scaling + service-mesh routing.</li>
+                  <li>Local gateway + mesh for true backend traffic.</li>
+                </ul>
+                {lockMode && (
+                  <div className="info-note">
+                    Mode is locked for this run to prevent misrouted traffic.
+                  </div>
                 )}
-                {!stressLoading && !stressError && stressResults && (
-                  <>
-                    <div className="stress-run-label">
-                      llm-d report: {stressResults.profile || 'custom'} · {stressResults.run_id || 'latest'}
+              </div>
+            </div>
+            <ul className="info-list info-meta">
+              <li>
+                <strong>What it is:</strong> A control tower UI + gateway that
+                routes LLM requests across workers with cache-aware, queue-aware
+                logic.
+              </li>
+              <li>
+                <strong>Tech:</strong> React (Vite) UI, Python gateway, gRPC
+                simulator, SGLang pre-route, vLLM OpenAI HTTP, Docker, K8s/Istio
+                hooks, Prometheus metrics, and optional OTEL collector export.
+              </li>
+              <li>
+                <strong>llm-d / vLLM mimic:</strong> Worker selection, retries,
+                rate limits, and observability patterns without a full GPU
+                cluster. Optional llm-d local mode routes through an llm-d
+                gateway (Kubernetes namespace <code>llm-d</code>) using the
+                official <code>llm-d-inference-sim</code> image. gRPC mode runs
+                in the llm-d mesh (<code>llm-d-mesh</code>) with a local
+                inference-sim image built from <code>Dockerfile.grpc-server</code>.
+                Can also target a local vLLM dev image via{' '}
+                <code>VLLM_HTTP_URL</code>.
+              </li>
+              <li>
+                <strong>SGLang stage behavior:</strong> When enabled in local
+                llm-d mode, the gateway sends your prompt to SGLang first to
+                rewrite it into a concise downstream instruction, then forwards
+                that rewritten prompt to llm-d. Hosted HF mode stays SIM-only, so
+                this stage is intentionally disabled there.
+              </li>
+              <li>
+                <strong>Tools (hosted/local):</strong> Hosted via Docker (HF
+                Spaces), local workflows use Docker, kubectl, Istio, and kind
+                for mesh demos.
+              </li>
+            </ul>
+          </div>
+        )}
+
+        <div className="stress-results">
+          {showStressResults && (
+            <div className="stress-results-panel">
+              {stressLoading && (
+                <p className="stress-plain">
+                  Loading {STRESS_RESULTS_DATE} report…
+                </p>
+              )}
+              {!stressLoading && stressError && (
+                <p className="stress-plain">{stressError}</p>
+              )}
+              {!stressLoading && !stressError && stressResults && (
+                <>
+                  <div className="stress-run-label">
+                    llm-d report ({STRESS_RESULTS_DATE}): {stressResults.profile || 'custom'} · {stressResults.run_id || 'latest'}
+                  </div>
+                    <div className="stress-tech-strip">
+                      <span className="stress-tech-chip">k6: exact load metrics</span>
+                      <span className="stress-tech-chip">Gateway logs: exact worker split</span>
+                      <span className="stress-tech-chip">Prometheus + OpenTelemetry: system telemetry</span>
                     </div>
                     <div className="stress-kpi-grid">
                       <div className="stress-kpi-card">
                         <span>Chat requests</span>
                         <strong>{stressAttempts.toLocaleString()}</strong>
+                        <small>Source: k6 summary</small>
                       </div>
                       <div className="stress-kpi-card">
                         <span>Success rate</span>
                         <strong>{stressSuccessRate.toFixed(2)}%</strong>
+                        <small>Source: k6 summary</small>
                       </div>
                       <div className="stress-kpi-card">
                         <span>Throughput</span>
-                        <strong>{Number(stressResults.throughput_rps || 0).toFixed(1)} req/s</strong>
+                        <strong>{stressK6Throughput.toFixed(1)} req/s</strong>
+                        <small>Source: k6 summary</small>
                       </div>
                       <div className="stress-kpi-card">
                         <span>p95 latency</span>
-                        <strong>{Number(stressResults?.latency_ms?.p95 || 0).toFixed(3)} ms</strong>
+                        <strong>{stressK6P95.toFixed(3)} ms</strong>
+                        <small>Source: k6 summary</small>
                       </div>
                     </div>
                     <p className="stress-plain">
-                      This card reads values directly from <code>{stressResults.source_file || 'reports/load/*/results.json'}</code>.
+                      Report file: <code>{stressResults.source_file || 'reports/load/*/results.json'}</code>
                     </p>
                     <p className="stress-plain">
-                      In this run, llm-d handled {stressAttempts.toLocaleString()} requests with {stressFailed.toLocaleString()} failures ({toPct(stressErrorRate)} error rate).
+                      Error rate: {toPct(stressErrorRate)} ({stressFailed.toLocaleString()} failed requests).
                     </p>
+                    {stressObservability && (
+                      <div className="stress-observability">
+                        <div className="stress-run-label">
+                          Prometheus snapshot (approximate)
+                        </div>
+                        {observabilityEnabled ? (
+                          <>
+                            <div className="stress-kpi-grid">
+                              <div className="stress-kpi-card">
+                                <span>Prom requests</span>
+                                <strong>{Number(observabilityRequests?.total || 0).toLocaleString()}</strong>
+                                <small>Source: Prometheus scrape</small>
+                              </div>
+                              <div className="stress-kpi-card">
+                                <span>Prom req/s</span>
+                                <strong>{formatMetric(observabilityRequests?.rate_rps, 2)}</strong>
+                                <small>Source: Prometheus scrape</small>
+                              </div>
+                              <div className="stress-kpi-card">
+                                <span>Prom p95</span>
+                                <strong>{formatMetric(observabilityLatency?.p95, 2, ' ms')}</strong>
+                                <small>Source: Prometheus histogram</small>
+                              </div>
+                              <div className="stress-kpi-card">
+                                <span>Prom p99</span>
+                                <strong>{formatMetric(observabilityLatency?.p99, 2, ' ms')}</strong>
+                                <small>Source: Prometheus histogram</small>
+                              </div>
+                            </div>
+                            <p className="stress-plain">
+                              Prometheus window: {Number(stressObservability?.window_seconds || 0).toLocaleString()}s
+                              {stressObservability?.captured_at ? ` · captured at ${stressObservability.captured_at}` : ''}.
+                            </p>
+                            <p className="stress-plain">
+                              Traces are exported with OpenTelemetry (API → OTel Collector → Jaeger).
+                            </p>
+                            {observabilityUnknownWorkers > 0 && (
+                              <p className="stress-plain">
+                                Prometheus worker identity is generic in this llm-d image; use gateway logs below for exact worker split.
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="stress-plain">
+                            Prometheus snapshot was not available for this run{stressObservability?.error ? `: ${stressObservability.error}` : '.'}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <p className="stress-plain">
-                      Worker identity coverage: {formatMetric(stressIdentityCoveragePct, 2, '%')} (known {stressIdentityKnown.toLocaleString()} / missing {stressIdentityMissing.toLocaleString()}, generic {stressIdentityGeneric.toLocaleString()}).
+                      Worker split source: {stressDistributionSourceLabel}.
                     </p>
-                    <p className="stress-plain">
-                      Worker split source: {stressDistributionSource === 'llmd_gateway_logs' ? 'llm-d gateway logs (real pod traffic)' : 'submit response fields'}.
-                    </p>
+                    {stressLlmdGatewayRun && (
+                      <p className="stress-plain">
+                        Cache, queue, and cache-warmth internals are not exposed by llm-d inference-sim in this mode.
+                      </p>
+                    )}
                     <div className="stress-worker-grid">
                       {stressWorkerDistribution.map((item) => (
                         <div key={item.label} className="stress-worker-card">
@@ -1222,41 +1301,13 @@ function App() {
                         </div>
                       ))}
                     </div>
-                    <div className="stress-worker-detail-grid">
-                      {stressWorkerDistribution.map((item) => (
-                        <div key={`detail-${item.label}`} className="stress-worker-detail-card">
-                          <div className="stress-worker-detail-title">
-                            Worker {item.label} detail{item.podName ? ` - ${item.podName}` : ''}
-                          </div>
-                          <div className="stress-worker-detail-line">
-                            Latency avg/p95: {formatMetric(item.latencyAvg, 2, ' ms')} / {formatMetric(item.latencyP95, 2, ' ms')}
-                          </div>
-                          <div className="stress-worker-detail-line">
-                            Cache hit/miss/unknown: {item.cacheHit.toLocaleString()} / {item.cacheMiss.toLocaleString()} / {item.cacheUnknown.toLocaleString()}
-                          </div>
-                          <div className="stress-worker-detail-line">
-                            Cache hit rate: {formatMetric(item.cacheHitRatePct, 2, '%')}
-                          </div>
-                          <div className="stress-worker-detail-line">
-                            Queue avg: {formatMetric(item.queueAvg, 2)} · Reported errors avg: {formatMetric(item.reportedErrorsAvg, 2)}
-                          </div>
-                          <div className="stress-worker-detail-line">
-                            Reported p95 avg: {formatMetric(item.reportedP95Avg, 2, ' ms')} · Cache warmth avg: {formatMetric(item.cacheWarmthAvg, 2)}
-                          </div>
-                          <div className="stress-worker-detail-line">
-                            API errors mapped to worker: {item.responseErrors.toLocaleString()}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
                     <div className="stress-footer">
                       Window: {stressDurationSec !== null ? `${stressDurationSec}s` : 'n/a'} • Failed: {stressFailed.toLocaleString()} • p50/p99: {Number(stressResults?.latency_ms?.p50 || 0).toFixed(3)} ms / {Number(stressResults?.latency_ms?.p99 || 0).toFixed(3)} ms
                     </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </section>
 

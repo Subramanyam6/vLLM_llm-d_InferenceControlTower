@@ -899,15 +899,30 @@ def format_flight_path(worker_id, reason):
 
 
 def _init_tracer():
-    if os.getenv("OTEL") != "1":
+    otel_enabled = str(os.getenv("OTEL", "")).strip() == "1"
+    otlp_endpoint = str(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")).strip()
+    if not otel_enabled and not otlp_endpoint:
         return None
     try:
         from opentelemetry import trace
         from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export import (
+            BatchSpanProcessor,
+            ConsoleSpanExporter,
+            SimpleSpanProcessor,
+        )
 
         provider = TracerProvider()
-        provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+        if otlp_endpoint:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter,
+            )
+
+            provider.add_span_processor(
+                BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint))
+            )
+        elif otel_enabled:
+            provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
         trace.set_tracer_provider(provider)
         return trace.get_tracer("inference-control-tower")
     except Exception:

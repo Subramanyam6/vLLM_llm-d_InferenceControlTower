@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
 
 from core import Gateway
+from telemetry import record_submit_metrics, render_prometheus_metrics
 
 
 _PORT = int(
@@ -408,7 +409,7 @@ def _handle_request(payload):
     why = _build_why(worker, result.get("reason"))
     worker_identity = _extract_worker_identity_from_result(result) or None
 
-    return {
+    response_payload = {
         "text": result["text"],
         "status": status,
         "mode": selected_mode,
@@ -424,6 +425,8 @@ def _handle_request(payload):
         "why": why,
         "workers_detail": _build_workers_payload(snapshot),
     }
+    record_submit_metrics(backend_value, response_payload)
+    return response_payload
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -467,6 +470,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/health":
             body = json.dumps({"ok": True}).encode("utf-8")
             self._send_bytes(body, 200, "application/json")
+            return
+        if path == "/metrics":
+            body, content_type = render_prometheus_metrics()
+            self._send_bytes(body, 200, content_type)
             return
         if path == "/api/state":
             body = json.dumps(_build_state_payload()).encode("utf-8")

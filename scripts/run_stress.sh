@@ -12,6 +12,8 @@ SLO_ERROR_RATE_MAX="${SLO_ERROR_RATE_MAX:-0.02}"
 SCALE_VALUE="${SCALE:-5}"
 LLMD_NAMESPACE="${LLMD_NAMESPACE:-llm-d}"
 LLMD_GATEWAY_DEPLOYMENT="${LLMD_GATEWAY_DEPLOYMENT:-llm-d-infra-inference-gateway-istio}"
+PROMETHEUS_URL="${PROMETHEUS_URL:-http://127.0.0.1:9090}"
+ENABLE_PROM_OBSERVABILITY="${ENABLE_PROM_OBSERVABILITY:-1}"
 DRY_RUN=0
 
 OVERRIDE_VUS=""
@@ -218,6 +220,9 @@ llmd_gateway_log="$run_dir/llmd_gateway.log"
 llmd_decode_pods_json="$run_dir/llmd_decode_pods.json"
 frontend_latest_json="$ROOT/frontend/public/stress/latest.json"
 frontend_latest_md="$ROOT/frontend/public/stress/latest.md"
+today_key="$(date -u +"%Y-%m-%d")"
+frontend_today_json="$ROOT/frontend/public/stress/dated/${today_key}.json"
+frontend_today_md="$ROOT/frontend/public/stress/dated/${today_key}.md"
 started_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 gateway_log_pid=""
 
@@ -285,14 +290,26 @@ fi
 
 python3 "$ROOT/scripts/render_stress_report.py" "${render_args[@]}"
 
+if [[ "${ENABLE_PROM_OBSERVABILITY}" == "1" || "${ENABLE_PROM_OBSERVABILITY}" == "true" || "${ENABLE_PROM_OBSERVABILITY}" == "yes" ]]; then
+  python3 "$ROOT/scripts/collect_observability_insights.py" \
+    --results-json "$results_json" \
+    --prom-url "$PROMETHEUS_URL" \
+    --backend "$BACKEND_MODE" || true
+fi
+
 mkdir -p "$(dirname "$frontend_latest_json")"
 cp "$results_json" "$frontend_latest_json"
 cp "$summary_md" "$frontend_latest_md"
+mkdir -p "$(dirname "$frontend_today_json")"
+cp "$results_json" "$frontend_today_json"
+cp "$summary_md" "$frontend_today_md"
 
 echo "Report JSON: $results_json"
 echo "Report Markdown: $summary_md"
 echo "Frontend latest JSON: $frontend_latest_json"
 echo "Frontend latest Markdown: $frontend_latest_md"
+echo "Frontend dated JSON: $frontend_today_json"
+echo "Frontend dated Markdown: $frontend_today_md"
 
 if [[ "$k6_status" -ne 0 ]]; then
   echo "k6 exited with status ${k6_status}" >&2

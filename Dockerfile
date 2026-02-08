@@ -17,7 +17,7 @@ ENV PYTHONUNBUFFERED=1
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
-COPY app.py core.py bench.py ./
+COPY app.py core.py telemetry.py bench.py ./
 COPY grpc_backend ./grpc_backend
 COPY --from=ui-build /app/frontend/dist ./frontend/dist
 

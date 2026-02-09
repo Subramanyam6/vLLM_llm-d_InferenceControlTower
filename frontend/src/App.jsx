@@ -253,13 +253,8 @@ const workerLaneY = (index, total) => {
 
 const statusClassName = (status) => String(status || 'pending').toLowerCase()
 
-const STRESS_RESULTS_DATE_KEY = new Date().toISOString().slice(0, 10)
-const STRESS_RESULTS_DATE = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'UTC',
-  month: '2-digit',
-  day: '2-digit',
-  year: 'numeric',
-}).format(new Date())
+const STRESS_RESULTS_DATE_KEY = '2026-02-08'
+const STRESS_RESULTS_DATE = '02/08/2026'
 const INTERNAL_PILL_GAP_MS = 1000
 const DUMMY_HINT = ' (dummy - host locally to use original tools)'
 const TWINKLE_STAR_COUNT = 90
@@ -457,17 +452,6 @@ const runDurationSec = (startedAt, endedAt) => {
   if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return null
   const seconds = Math.round((endTs - startTs) / 1000)
   return seconds > 0 ? seconds : null
-}
-
-const formatUtcDate = (isoTimestamp, fallback = STRESS_RESULTS_DATE) => {
-  const parsed = Date.parse(isoTimestamp || '')
-  if (!Number.isFinite(parsed)) return fallback
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'UTC',
-    month: '2-digit',
-    day: '2-digit',
-    year: 'numeric',
-  }).format(new Date(parsed))
 }
 
 function App() {
@@ -988,7 +972,6 @@ function App() {
   const observabilityRequests = stressObservability?.requests || {}
   const observabilityLatency = stressObservability?.latency_ms || {}
   const observabilityUnknownWorkers = Number(stressObservability?.worker_distribution?.unknown || 0)
-  const stressReportDate = formatUtcDate(stressResults?.started_at)
   const renderRobotSvg = (idPrefix) => (
     <svg
       className="robot-svg"
@@ -1268,7 +1251,7 @@ function App() {
               {!stressLoading && !stressError && stressResults && (
                 <>
                   <div className="stress-run-label">
-                    llm-d report ({stressReportDate}): {stressResults.profile || 'custom'} · {stressResults.run_id || 'latest'}
+                    llm-d report ({STRESS_RESULTS_DATE}): {stressResults.profile || 'custom'} · {stressResults.run_id || 'latest'}
                   </div>
                     <div className="stress-tech-strip">
                       <span className="stress-tech-chip">k6: exact load metrics</span>
